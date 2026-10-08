@@ -603,15 +603,32 @@ def yaml_front_matter(data: dict) -> str:
     return "---\n" + dumped + "---\n"
 
 
-def write_posts(docs_dir: Path, notes: list[dict], settings: dict) -> dict[str, str]:
-    """写文章文件，返回 {笔记相对路径: 站点链接}。"""
+def write_text_if_changed(path: Path, text: str) -> bool:
+    """只在内容真的变了才写文件，返回是否写了。
+
+    这一点很关键：mkdocs serve 监听的是 docs/ 目录，
+    如果每次构建都把同样的内容重写一遍，就会不断触发新的构建，陷入死循环。
+    """
+    if path.exists():
+        try:
+            if path.read_text(encoding="utf-8") == text:
+                return False
+        except (OSError, UnicodeDecodeError):
+            pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
+    return True
+
+
+def write_posts(docs_dir: Path, notes: list[dict], settings: dict):
+    """写文章文件，返回 ``(链接表, 新写入篇数, 清理篇数)``。"""
     posts_root = docs_dir / "blog" / "posts"
-    if posts_root.exists():
-        shutil.rmtree(posts_root)
     posts_root.mkdir(parents=True, exist_ok=True)
 
     urls: dict[str, str] = {}
+    expected: set[Path] = set()
     used: set[str] = set()
+    written = 0
 
     for note in sorted(notes, key=lambda item: (item["rel"].casefold(), item["rel"])):
         folder = note["category_slug"]
@@ -624,7 +641,7 @@ def write_posts(docs_dir: Path, notes: list[dict], settings: dict) -> dict[str, 
         used.add(key)
 
         target = posts_root / folder / f"{key.split('/')[-1]}.md"
-        target.parent.mkdir(parents=True, exist_ok=True)
+        expected.add(target)
 
         meta = {
             "title": note["title"],
@@ -639,13 +656,26 @@ def write_posts(docs_dir: Path, notes: list[dict], settings: dict) -> dict[str, 
         if note["description"]:
             meta["description"] = note["description"]
 
-        target.write_text(
-            yaml_front_matter(meta) + "\n" + note["body"].strip() + "\n",
-            encoding="utf-8",
-            newline="\n",
-        )
+        content = yaml_front_matter(meta) + "\n" + note["body"].strip() + "\n"
+        if write_text_if_changed(target, content):
+            written += 1
         urls[note["rel"]] = f"blog/{key}/"
-    return urls
+
+    # 清掉已经不存在（被删除或改名）的旧文章
+    removed = 0
+    for stale in posts_root.rglob("*.md"):
+        if stale not in expected:
+            stale.unlink()
+            removed += 1
+    for directory in sorted(
+        (item for item in posts_root.rglob("*") if item.is_dir()),
+        key=lambda item: len(item.parts),
+        reverse=True,
+    ):
+        if not any(directory.iterdir()):
+            directory.rmdir()
+
+    return urls, written, removed
 
 
 def write_home(docs_dir: Path, notes: list[dict], urls: dict[str, str], settings: dict):
@@ -724,13 +754,15 @@ def write_home(docs_dir: Path, notes: list[dict], urls: dict[str, str], settings
     parts.append("</div>")
     parts.append("")
 
-    (docs_dir / "index.md").write_text("\n".join(parts), encoding="utf-8", newline="\n")
+    (docs_dir / "index.md").parent.mkdir(parents=True, exist_ok=True)
+    write_text_if_changed(docs_dir / "index.md", "\n".join(parts))
 
     blog_dir = docs_dir / "blog"
     blog_dir.mkdir(parents=True, exist_ok=True)
     latest_year = max(dates)[:4]
     sample_category = material_slugify(categories[0][0])
-    (blog_dir / "index.md").write_text(
+    write_text_if_changed(
+        blog_dir / "index.md",
         "---\n"
         "hide:\n"
         "  - navigation\n"
@@ -741,8 +773,6 @@ def write_home(docs_dir: Path, notes: list[dict], urls: dict[str, str], settings
         f"共 {len(notes)} 篇，按时间倒序排列。也可以按 "
         f"[归档](archive/{latest_year}.md) 或 [分类](category/{sample_category}.md) 浏览，"
         "或直接用左上角的搜索框搜关键词。\n",
-        encoding="utf-8",
-        newline="\n",
     )
 
 
@@ -827,16 +857,16 @@ def run_sync(root: Path, docs_dir: Path, settings: dict) -> dict:
     save_json(cache_path, cache)
 
     docs_dir.mkdir(parents=True, exist_ok=True)
-    urls = write_posts(docs_dir, notes, settings)
+    urls, written, removed = write_posts(docs_dir, notes, settings)
     write_home(docs_dir, notes, urls, settings)
     write_static_pages(docs_dir)
 
-    print(
-        f"  · 已同步 {len(notes)} 篇笔记"
-        f"（跳过空文件 {len(skipped['empty'])}、"
-        f"重复 {len(skipped['duplicate'])}、"
-        f"排除 {len(skipped['excluded'])}）"
-    )
+    summary = f"  · 已同步 {len(notes)} 篇笔记（空文件 {len(skipped['empty'])}、重复 {len(skipped['duplicate'])}、排除 {len(skipped['excluded'])}）"
+    if written or removed:
+        summary += f"，写入 {written} 篇、清理 {removed} 篇"
+    else:
+        summary += "，内容无变化"
+    print(summary)
     for rel in skipped["duplicate"]:
         print(f"      重复跳过：{rel}")
     if skipped.get("missing_images"):
