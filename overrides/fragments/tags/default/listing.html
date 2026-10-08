@@ -1,0 +1,39 @@
+{#-
+  覆盖 mkdocs-material 的标签列表模板（原文件在主题的
+  fragments/tags/default/listing.html），目的是在每个标签下面
+  连同日期、分类、阅读时长一起展示，而不只是标题。
+
+  升级 mkdocs-material 后建议对比一下原模板有没有变化。
+-#}
+{% macro render(listing) %}
+  {{ listing.content }}
+  <div class="tag-listing">
+    {% for mapping in listing.mappings %}
+      {% set item = mapping.item %}
+      {% set meta = item.meta or {} %}
+      <a class="tag-listing__item" href="{{ item.url | url }}">
+        <div class="tag-listing__main">
+          <span class="tag-listing__title">{{ item.title }}</span>
+          {% if meta.description %}
+            <span class="tag-listing__desc">{{ meta.description }}</span>
+          {% endif %}
+        </div>
+        <div class="tag-listing__meta">
+          {% if meta.date %}
+            <span class="chip chip--date">{{ meta.date }}</span>
+          {% endif %}
+          {% for name in meta.categories or [] %}
+            <span class="chip chip--cat">{{ name }}</span>
+          {% endfor %}
+          {% if meta.readtime %}
+            <span class="chip">{{ meta.readtime }} 分钟</span>
+          {% endif %}
+        </div>
+      </a>
+    {% endfor %}
+    {% for child in listing %}
+      <div class="tag-listing__group">{{ render(child) }}</div>
+    {% endfor %}
+  </div>
+{% endmacro %}
+{{ render(listing) }}

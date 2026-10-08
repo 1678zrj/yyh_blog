@@ -12,6 +12,10 @@ record/            原始笔记（你只需要往这里写，唯一内容源）
   ├─ FastAPI/xxx.md
   ├─ Redis/xxx.md
   └─ 业务上的疑问（经验类）/...
+typeora/           另一个笔记目录，同样会被发布（.md 和 .txt 都算笔记）
+  ├─ python/xxx.md
+  ├─ pytorch/xxx.md
+  └─ 前后端/前端/vue/xxx.md
         │
         │  mkdocs build 时由 scripts/gen_blog.py 自动转换
         ▼
@@ -21,11 +25,14 @@ docs/blog/posts/<分类>/<标题>.md    带 front matter 的博客文章（自�
 site/                              最终静态网页（构建产物，不进 git）
 ```
 
-- `record/` 目录保持原样，脚本只读不写。
+- 两个笔记目录**合并到同一套分类**里：分类名取各自目录下的第一层目录名，
+  大小写不同视为同一个分类（`FastAPI` 与 `fastapi` 会合并成一个）。
+- 笔记目录保持原样，脚本只读不写。
 - **文章日期 = 笔记文件的修改日期**，首次同步时记录到 `note-dates.json` 并固定下来，
   以后修改老笔记不会把发布日期改掉。
 - 代码块没写语言时，脚本会自动识别并补上，让代码有语法高亮。
 - 笔记里用本地绝对路径引用的图片，脚本会复制到 `docs/assets/images/notes/` 并改写链接。
+- 正文前两个段落之后会插入 `<!-- more -->`，列表页只展示摘要，不会把整篇文章铺在列表上。
 
 ## 日常使用
 
@@ -44,7 +51,7 @@ python -m venv .venv
 
 ### 写一篇新笔记
 
-1. 在 `record/` 下新建 `.md` 文件（可以放进任意子目录，子目录名会成为文章分类）。
+1. 在 `record/` 或 `typeora/` 下新建 `.md`（或 `.txt`）文件，子目录名会成为文章分类。
 2. 运行 `mkdocs serve` 预览，或直接提交。
 3. 提交并推送到 GitHub：
 
@@ -63,10 +70,24 @@ git push
 | 站点标题、简介、作者、社交链接 | `mkdocs.yml` 顶部的 `site_name` / `site_description` / `extra.social` |
 | 「关于我」页面 | `docs/about.md` |
 | 配色、深浅色 | `mkdocs.yml` 的 `theme.palette` |
-| 页面样式 | `docs/assets/extra.css` |
+| **排版与视觉动效** | `docs/assets/extra.css`（样式）、`docs/assets/extra.js`（滚动淡入、阅读进度条） |
 | 首页文案（英雄区那段话） | `scripts/gen_blog.py` 里的 `write_home()` |
+| 标签页每条记录的展示内容 | `overrides/fragments/tags/default/listing.html` |
+| 再加一个笔记目录 | `mkdocs.yml` 的 `extra.note_sync.notes_dirs` 里加一行 |
 | 隐藏某些目录不发布 | `mkdocs.yml` 的 `extra.note_sync.exclude`，例如 `["record/私密/*"]` |
-| 站点域名/仓库名变了 | `mkdocs.yml` 的 `site_url`、`repo_url`，以及 `scripts/check_links.py` 的 `BASE_PATH` |
+| 列表页每页文章数 | `mkdocs.yml` 的 `plugins.blog.pagination_per_page` |
+| 站点域名/仓库名变了 | `mkdocs.yml` 的 `site_url`、`repo_url`；`scripts/check_links.py` 会自动读取 `site_url` |
+
+### 关于视觉与动效
+
+- 首页：渐变标题 + 缓慢漂浮的光斑 + 数据统计 + 卡片网格 + 分类/年度胶囊。
+- 列表页：两列卡片网格（窄屏自动变一列），鼠标悬停上浮并显示顶部渐变条。
+- 滚动动效：元素进入视口时淡入上移，错峰出现；系统开启「减少动态效果」时自动关闭。
+- 文章页：顶部阅读进度条、左侧日期/分类/阅读时长元数据。
+- 全部动效均为纯 CSS + 少量原生 JS，没有引入任何第三方库。
+
+> 说明：`overrides/fragments/tags/default/listing.html` 覆盖了主题自带的标签列表模板，
+> 升级 `mkdocs-material` 之后建议对比一下原模板是否有变化。
 
 ## 自动执行的处理
 
@@ -74,12 +95,14 @@ git push
 
 | 处理 | 说明 |
 | --- | --- |
-| 跳过空文件 | `record/` 里 0 字节的笔记不会发布 |
-| 跳过重复内容 | 内容完全相同的笔记只保留第一篇（会打印跳过了哪些） |
+| 跳过空文件 | 0 字节的笔记不会发布 |
+| 跳过重复内容 | 内容完全相同的笔记只保留第一篇，跨笔记目录也会去重（会打印跳过了哪些） |
 | 标题层级统一 | 正文最高级标题统一成 `##`，避免和文章标题抢层级 |
+| 插入摘要标记 | 前两个段落后插入 `<!-- more -->`，列表页只显示摘要 |
+| 估算阅读时长 | 按正文字符数估算，显示在列表页和文章页元数据里 |
 | 代码语言识别 | 未标注语言的代码块自动补上语言，结果缓存在 `.build-cache/` |
 | 图片本地化 | 本地绝对路径的图片复制进 `docs/assets/images/notes/` 并改写链接 |
-| 生成首页 | 统计数字、最新笔记、分类入口 |
+| 生成首页 | 统计数字、最新笔记、分类与年度入口 |
 
 ## 首次部署（已完成的部分跳过）
 
@@ -96,7 +119,7 @@ git push
 4. 回到 **Actions** 页签，等 `构建并部署博客` 跑完，访问 <https://1678zrj.github.io/yyh_blog/>。
 
 > 如果希望网址更短（`https://1678zrj.github.io/`），把仓库名改成 `1678zrj.github.io`，
-> 并同步修改 `mkdocs.yml` 里的 `site_url`、`repo_url` 和 `scripts/check_links.py` 里的 `BASE_PATH`。
+> 并同步修改 `mkdocs.yml` 里的 `site_url` 和 `repo_url`。
 
 ## 开发者自检
 

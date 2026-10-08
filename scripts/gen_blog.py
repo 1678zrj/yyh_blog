@@ -30,7 +30,8 @@ from pathlib import Path, PurePosixPath
 # --------------------------------------------------------------------------- #
 
 DEFAULTS: dict = {
-    "notes_dir": "record",          # 原始笔记目录（相对仓库根目录）
+    "notes_dirs": ["record", "typeora"],  # 原始笔记目录（相对仓库根目录），可以有多个
+    "notes_extensions": [".md", ".txt"],  # 参与发布的笔记后缀（.txt 按 Markdown 处理）
     "dates_file": "note-dates.json",  # 记录「文件 -> 日期」的清单，需要提交到 git
     "cache_dir": ".build-cache",    # 构建缓存（代码语言识别结果），已在 .gitignore 中
     "exclude": [],                  # 要跳过的路径 glob，例如 ["record/私密/*"]
@@ -38,8 +39,13 @@ DEFAULTS: dict = {
     "guess_code_language": True,    # 为没有标注语言的代码块自动识别语言
     "localize_images": True,        # 把本地绝对路径引用的图片收进仓库并改写链接
     "images_dir": "assets/images/notes",
+    "image_max_width": 1500,        # 截图超过这个宽度会等比缩小
+    "image_min_bytes": 400_000,     # 小于这个体积的图片不做处理
+    "image_max_error": 0.02,        # 压缩后允许的最大画质误差，超了就保持原图
     "heading_base_level": 2,        # 正文最高级标题统一成几级（页面标题已经占了一级）
     "max_description": 150,         # 列表页摘要最大字数
+    "excerpt_paragraphs": 2,        # 列表页最多展示正文的前几个段落
+    "chars_per_minute": 400,        # 估算阅读速度（字符/分钟）
     "home_latest": 6,               # 首页展示的最新文章数量
     "categories_name": "分类",
 }
@@ -287,8 +293,105 @@ def fill_code_languages(blocks, cache: dict):
             blocks[index] = (is_code, guessed, lines)
 
 
+EXCERPT_MARKER = "<!-- more -->"
+
+
+def insert_excerpt(blocks, paragraphs: int) -> None:
+    """在正文前几个段落之后插入 ``<!-- more -->``，让列表页只展示摘要。
+
+    没有这个标记时 mkdocs-material 会把整篇文章渲染进列表页，
+    列表会又长又慢。
+    """
+    for index, (is_code, lang, lines) in enumerate(blocks):
+        if is_code:
+            continue
+
+        ends: list[int] = []
+        inside = False
+        for position, line in enumerate(lines):
+            if line.strip():
+                inside = True
+            elif inside:
+                ends.append(position)
+                inside = False
+        if inside:
+            ends.append(len(lines))
+        if not ends:
+            continue
+
+        at = ends[min(paragraphs, len(ends)) - 1]
+        if at < len(lines) and not lines[at].strip():
+            new_lines = lines[:at] + ["", EXCERPT_MARKER] + lines[at:]
+        else:
+            new_lines = lines[:at] + ["", EXCERPT_MARKER, ""] + lines[at:]
+        blocks[index] = (is_code, lang, new_lines)
+        return
+
+
+def estimate_readtime(body: str, chars_per_minute: int) -> int:
+    """估算阅读时长（分钟），代码块不计入。"""
+    text = re.sub(r"^[ \t]*(?:```|~~~).*?^[ \t]*(?:```|~~~)[ \t]*$", "", body, flags=re.S | re.M)
+    chars = len(re.sub(r"\s+", "", text))
+    return max(1, round(chars / max(chars_per_minute, 1)))
+
+
 IMAGE_RE = re.compile(r"(!\[[^\]]*\]\()([^)\s]+)((?:\s+\"[^\"]*\")?\s*\))")
 
+
+def _image_error(left, right) -> float:
+    """两张图之间的归一化均方根误差，用来判断压缩后画质掉得厉不厉害。"""
+    from PIL import ImageChops, ImageStat
+
+    diff = ImageChops.difference(left.convert("RGB"), right.convert("RGB"))
+    return ImageStat.Stat(diff).rms[0] / 255.0
+
+
+def optimize_image(path: Path, max_width: int, min_bytes: int, max_error: float) -> bool:
+    """压缩过大的截图：等比缩小 + 量化调色板，画质误差超限就放弃。
+
+    只在图片刚被复制进仓库时调用一次；已经处理过的图片体积会降下来，
+    再跑也不会重复处理（配合 ``--optimize-images`` 可以批量补做）。
+    """
+    if path.suffix.lower() in {".gif", ".svg", ".webp"}:
+        return False
+    try:
+        if path.stat().st_size < min_bytes:
+            return False
+    except OSError:
+        return False
+
+    try:
+        import io
+
+        from PIL import Image
+
+        with Image.open(path) as opened:
+            opened.load()
+            image = opened.copy()
+
+        if image.width > max_width:
+            ratio = max_width / image.width
+            image = image.resize((max_width, max(1, round(image.height * ratio))), Image.LANCZOS)
+
+        best = image
+        if image.mode in {"RGB", "RGBA"}:
+            opaque = image.mode == "RGB" or image.getchannel("A").getextrema()[0] == 255
+            if opaque:
+                rgb = image.convert("RGB")
+                # 注意：这里要保持 P 模式（调色板 PNG），转回 RGB 会把体积优势丢掉
+                quantized = rgb.quantize(colors=256, method=Image.MEDIANCUT)
+                if _image_error(rgb, quantized) <= max_error:
+                    best = quantized
+
+        buffer = io.BytesIO()
+        best.save(buffer, format="PNG", optimize=True)
+        data = buffer.getvalue()
+        if len(data) >= path.stat().st_size:
+            return False
+        path.write_bytes(data)
+    except Exception:
+        return False
+    return True
 
 def localize_images(blocks, source: Path, docs_dir: Path, post_rel_dir: str, settings: dict) -> list[str]:
     """把笔记里用本地绝对路径引用的图片复制进仓库，并改成能发布的相对路径。
@@ -328,6 +431,12 @@ def localize_images(blocks, source: Path, docs_dir: Path, post_rel_dir: str, set
                     return match.group(0)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(candidate, dest)
+                optimize_image(
+                    dest,
+                    settings["image_max_width"],
+                    settings["image_min_bytes"],
+                    settings["image_max_error"],
+                )
 
             relative = posixpath.relpath(f"{images_dir}/{dest.name}", post_rel_dir)
             return f"{match.group(1)}{relative}{match.group(3)}"
@@ -384,74 +493,92 @@ def make_description(text: str, limit: int) -> str:
     return clip(clean_inline(" ".join(buf)), limit)
 
 
-def collect_notes(notes_dir: Path, root: Path, docs_dir: Path, settings: dict, cache: dict):
-    """遍历笔记目录，产出文章列表。"""
+def collect_notes(notes_dirs: list[Path], root: Path, docs_dir: Path, settings: dict, cache: dict):
+    """遍历所有笔记目录，产出文章列表。
+
+    多个笔记目录会合并到同一套分类里：分类名取笔记目录下的第一层目录名，
+    大小写不同视为同一个分类（例如 FastAPI 与 fastapi 合并）。
+    """
     dates_path = root / settings["dates_file"]
     dates: dict = load_json(dates_path, {})
     if not isinstance(dates, dict):
         dates = {}
 
+    canonical_categories: dict[str, str] = {}
     seen_hashes: dict[str, str] = {}
     notes, skipped_empty, skipped_dup, skipped_exclude = [], [], [], []
     missing_images: list[str] = []
     fresh_dates: dict[str, str] = {}
+    extensions = tuple(settings["notes_extensions"])
 
-    # 排序键同时忽略大小写并保留原串，保证在不同操作系统上结果一致
-    for path in sorted(notes_dir.rglob("*.md"), key=lambda item: (item.as_posix().casefold(), item.as_posix())):
-        rel = path.relative_to(root).as_posix()
-        if any(fnmatch.fnmatch(rel, pattern) for pattern in settings["exclude"]):
-            skipped_exclude.append(rel)
+    def canonical(name: str) -> str:
+        return canonical_categories.setdefault(name.casefold(), name)
+
+    for notes_dir in notes_dirs:
+        if not notes_dir.is_dir():
+            print(f"  ! 跳过不存在的笔记目录：{notes_dir}")
             continue
 
-        raw = read_text(path)
-        if not raw.strip():
-            skipped_empty.append(rel)
-            continue
-
-        body = raw
-        if body.lstrip().startswith("---"):
-            print(f"  ! {rel} 自带 front matter，已保留在正文中")
-
-        if settings["dedupe"]:
-            digest = hashlib.md5(body.encode("utf-8")).hexdigest()
-            if digest in seen_hashes:
-                skipped_dup.append(f"{rel}  (与 {seen_hashes[digest]} 内容相同)")
-                continue
-            seen_hashes[digest] = rel
-
-        # 日期：优先取清单里已固定的日期，否则用文件修改时间
-        date = dates.get(rel)
-        if not date:
-            date = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
-        fresh_dates[rel] = date
-
-        relative = path.relative_to(notes_dir)
-        parts = list(relative.parts)
-        category = parts[0] if len(parts) > 1 else "未分类"
-        tags = [slug for slug in parts[1:-1]]
-
-        blocks = iter_blocks(body)
-        normalize_headings(blocks, settings["heading_base_level"])
-        if settings["guess_code_language"]:
-            fill_code_languages(blocks, cache)
-        if settings["localize_images"]:
-            missing_images.extend(
-                localize_images(blocks, path, docs_dir, f"blog/posts/{slugify(category)}", settings)
-            )
-
-        notes.append(
-            {
-                "rel": rel,
-                "date": date,
-                "title": path.stem.strip(),
-                "category": category,
-                "category_slug": slugify(category),
-                "tags": tags,
-                "slug": slugify(path.stem),
-                "description": make_description(body, settings["max_description"]),
-                "body": render_blocks(blocks),
-            }
+        # 排序键同时忽略大小写并保留原串，保证在不同操作系统上结果一致
+        candidates = sorted(
+            (path for path in notes_dir.rglob("*") if path.suffix.lower() in extensions),
+            key=lambda item: (item.as_posix().casefold(), item.as_posix()),
         )
+
+        for path in candidates:
+            rel = path.relative_to(root).as_posix()
+            if any(fnmatch.fnmatch(rel, pattern) for pattern in settings["exclude"]):
+                skipped_exclude.append(rel)
+                continue
+
+            raw = read_text(path)
+            if not raw.strip():
+                skipped_empty.append(rel)
+                continue
+            body = raw
+
+            if settings["dedupe"]:
+                digest = hashlib.md5(body.encode("utf-8")).hexdigest()
+                if digest in seen_hashes:
+                    skipped_dup.append(f"{rel}  (与 {seen_hashes[digest]} 内容相同)")
+                    continue
+                seen_hashes[digest] = rel
+
+            # 日期：优先取清单里已固定的日期，否则用文件修改时间
+            date = dates.get(rel)
+            if not date:
+                date = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
+            fresh_dates[rel] = date
+
+            relative = path.relative_to(notes_dir)
+            parts = list(relative.parts)
+            category = canonical(parts[0]) if len(parts) > 1 else "未分类"
+            tags = list(dict.fromkeys(parts[1:-1]))  # 更深层的目录名作为标签
+
+            blocks = iter_blocks(body)
+            normalize_headings(blocks, settings["heading_base_level"])
+            if settings["guess_code_language"]:
+                fill_code_languages(blocks, cache)
+            if settings["localize_images"]:
+                missing_images.extend(
+                    localize_images(blocks, path, docs_dir, f"blog/posts/{slugify(category)}", settings)
+                )
+            insert_excerpt(blocks, settings["excerpt_paragraphs"])
+
+            notes.append(
+                {
+                    "rel": rel,
+                    "date": date,
+                    "title": path.stem.strip(),
+                    "category": category,
+                    "category_slug": slugify(category),
+                    "tags": tags,
+                    "slug": slugify(path.stem),
+                    "description": make_description(body, settings["max_description"]),
+                    "readtime": estimate_readtime(body, settings["chars_per_minute"]),
+                    "body": render_blocks(blocks),
+                }
+            )
 
     # 固定日期清单：保留仍然存在的文件，剔除已删除的文件
     if save_json(dates_path, fresh_dates):
@@ -505,6 +632,7 @@ def write_posts(docs_dir: Path, notes: list[dict], settings: dict) -> dict[str, 
             "date": date.fromisoformat(note["date"]),
             "slug": key,
             "categories": [note["category"]],
+            "readtime": note["readtime"],
         }
         if note["tags"]:
             meta["tags"] = note["tags"]
@@ -521,7 +649,7 @@ def write_posts(docs_dir: Path, notes: list[dict], settings: dict) -> dict[str, 
 
 
 def write_home(docs_dir: Path, notes: list[dict], urls: dict[str, str], settings: dict):
-    """生成首页：一句自我介绍 + 数据 + 分类入口 + 最新文章。"""
+    """生成首页：数据概览 + 最新笔记 + 分类胶囊 + 年度归档。"""
     ordered = sorted(notes, key=lambda item: (item["date"], item["rel"]), reverse=True)
     latest = ordered[: settings["home_latest"]]
 
@@ -531,43 +659,69 @@ def write_home(docs_dir: Path, notes: list[dict], urls: dict[str, str], settings
     categories = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
 
     dates = [note["date"] for note in notes]
+    years: dict[str, int] = {}
+    for value in dates:
+        years[value[:4]] = years.get(value[:4], 0) + 1
+
     parts = [
         "<!-- 此文件由 scripts/gen_blog.py 生成，请勿直接修改 -->",
         "",
         '<div class="home-hero" markdown>',
+        "",
+        '<p class="home-hero__eyebrow">BACKEND / AI ENGINEERING NOTES</p>',
         "",
         "# 技术笔记",
         "",
         "后端与 AI 应用开发的工程笔记：把踩过的坑、读过的源码、做过的取舍，"
         "整理成可以直接复用的问答。",
         "",
-        f'<p class="home-stats">共 <strong>{len(notes)}</strong> 篇笔记 · '
-        f'<strong>{len(categories)}</strong> 个分类 · '
-        f"更新于 {max(dates)}</p>",
+        '<div class="home-stats">',
+        f'  <div class="home-stat"><strong>{len(notes)}</strong><span>篇笔记</span></div>',
+        f'  <div class="home-stat"><strong>{len(categories)}</strong><span>个分类</span></div>',
+        f'  <div class="home-stat"><strong>{len(years)}</strong><span>个年度</span></div>',
+        f'  <div class="home-stat"><strong>{min(dates)[:4]}</strong><span>年起持续更新</span></div>',
+        "</div>",
         "",
+        '<div class="home-actions">',
         '[浏览全部笔记 :material-arrow-right:](blog/index.md){ .md-button .md-button--primary }',
         "[关于我](about.md){ .md-button }",
+        "</div>",
         "",
         "</div>",
         "",
         "## 最新笔记",
         "",
+        '<div class="post-grid">',
     ]
 
     for note in latest:
         url = urls[note["rel"]]
         parts += [
-            f'<div class="post-card">',
-            f'  <div class="post-card__meta">{note["date"]} · {note["category"]}</div>',
-            f'  <a class="post-card__title" href="{url}">{note["title"]}</a>',
+            '<a class="post-card" href="%s">' % url,
+            '  <div class="post-card__meta">',
+            f'    <span class="chip chip--date">{note["date"]}</span>',
+            f'    <span class="chip chip--cat">{note["category"]}</span>',
+            f'    <span class="chip">{note["readtime"]} 分钟</span>',
+            "  </div>",
+            f'  <div class="post-card__title">{note["title"]}</div>',
             f'  <div class="post-card__desc">{note["description"]}</div>',
-            "</div>",
+            "</a>",
             "",
         ]
-
-    parts += ["[:material-archive: 查看全部 %d 篇](blog/index.md)" % len(notes), "", "## 分类", ""]
+    parts += ["</div>", "", "## 按分类浏览", "", '<div class="chip-grid">']
     for name, count in categories:
-        parts.append(f"- [{name}](blog/category/{material_slugify(name)}.md) · {count} 篇")
+        # 这里用裸 HTML，mkdocs 不会重写 .md 链接，所以直接写成最终的目录地址
+        parts.append(
+            f'<a class="chip chip--category" href="blog/category/{material_slugify(name)}/">'
+            f'{name}<span class="chip__count">{count}</span></a>'
+        )
+    parts += ["</div>", "", "## 按时间浏览", "", '<div class="chip-grid">']
+    for year in sorted(years, reverse=True):
+        parts.append(
+            f'<a class="chip chip--category" href="blog/archive/{year}/">'
+            f'{year} 年<span class="chip__count">{years[year]}</span></a>'
+        )
+    parts.append("</div>")
     parts.append("")
 
     (docs_dir / "index.md").write_text("\n".join(parts), encoding="utf-8", newline="\n")
@@ -630,7 +784,7 @@ def write_static_pages(docs_dir: Path):
             "\n"
             "# 标签\n"
             "\n"
-            "下面是全部笔记的标签索引，点击标签即可筛选。\n"
+            "下面是全部笔记的标签索引，每篇都标出了日期、分类和预计阅读时长，点击标题即可打开。\n"
             "\n"
             "<!-- material/tags -->\n",
             encoding="utf-8",
@@ -659,16 +813,17 @@ def write_static_pages(docs_dir: Path):
 # --------------------------------------------------------------------------- #
 
 def run_sync(root: Path, docs_dir: Path, settings: dict) -> dict:
-    notes_dir = root / settings["notes_dir"]
-    if not notes_dir.is_dir():
-        raise SystemExit(f"找不到笔记目录：{notes_dir}")
+    names = settings.get("notes_dirs") or [settings.get("notes_dir", "record")]
+    notes_dirs = [root / name for name in names]
+    if not any(path.is_dir() for path in notes_dirs):
+        raise SystemExit(f"找不到任何笔记目录：{[str(p) for p in notes_dirs]}")
 
     cache_path = root / settings["cache_dir"] / "code-langs.json"
     cache = load_json(cache_path, {})
     if not isinstance(cache, dict):
         cache = {}
 
-    notes, skipped = collect_notes(notes_dir, root, docs_dir, settings, cache)
+    notes, skipped = collect_notes(notes_dirs, root, docs_dir, settings, cache)
     save_json(cache_path, cache)
 
     docs_dir.mkdir(parents=True, exist_ok=True)
@@ -724,6 +879,31 @@ def load_mkdocs_config(config_file: Path) -> dict:
     return yaml.load(config_file.read_text(encoding="utf-8"), Loader=TolerantLoader) or {}
 
 
+def optimize_existing_images(root: Path, docs_dir: Path, settings: dict) -> None:
+    """批量压缩已经复制进仓库的图片（新增图片在复制时就会自动压缩）。"""
+    images_dir = docs_dir / settings["images_dir"].strip("/")
+    if not images_dir.is_dir():
+        print(f"没有找到图片目录：{images_dir}")
+        return
+
+    targets = sorted(path for path in images_dir.rglob("*") if path.is_file())
+    before = sum(path.stat().st_size for path in targets)
+    changed = 0
+    for path in targets:
+        if optimize_image(
+            path,
+            settings["image_max_width"],
+            settings["image_min_bytes"],
+            settings["image_max_error"],
+        ):
+            changed += 1
+    after = sum(path.stat().st_size for path in targets)
+    print(
+        f"图片压缩：处理 {changed}/{len(targets)} 张，"
+        f"{before / 1048576:.1f}MB -> {after / 1048576:.1f}MB"
+    )
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     config_file = root / "mkdocs.yml"
@@ -736,7 +916,12 @@ def main() -> int:
         settings = dict(DEFAULTS)
         docs_dir = root / "docs"
 
-    print(f"同步 {settings['notes_dir']} -> {docs_dir}")
+    if "--optimize-images" in sys.argv:
+        optimize_existing_images(root, docs_dir, settings)
+        return 0
+
+    names = settings.get("notes_dirs") or [settings.get("notes_dir", "record")]
+    print(f"同步 {'、'.join(names)} -> {docs_dir}")
     run_sync(root, docs_dir, settings)
     return 0
 

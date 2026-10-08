@@ -26,12 +26,16 @@ hooks:
 # ---------------------------------------------------------------------------
 extra:
   note_sync:
-    notes_dir: record            # 原始笔记目录
+    notes_dirs:                  # 原始笔记目录，可以写多个，会合并到同一套分类里
+      - record
+      - typeora
+    notes_extensions: [".md", ".txt"]   # .txt 里的笔记也按 Markdown 发布
     dates_file: note-dates.json  # 文件 -> 日期 的清单（会提交到 git，保证日期不漂移）
     exclude: []                  # 想隐藏某个目录时写在这里，例如 ["record/私密/*"]
-    dedupe: true                 # 内容完全相同的笔记只发一篇
+    dedupe: true                 # 内容完全相同的笔记只发一篇（跨目录也会去重）
     guess_code_language: true    # 没写语言的代码块自动识别语言
     heading_base_level: 2        # 正文最高级标题统一成 ##
+    excerpt_paragraphs: 2        # 列表页每篇最多展示前几个段落
     home_latest: 6               # 首页展示的最新笔记条数
   social:
     - icon: fontawesome/brands/github
@@ -48,6 +52,7 @@ theme:
   name: material
   language: zh
   font: false                     # 不加载 Google Fonts（国内访问不到，会导致页面卡住）
+  custom_dir: overrides           # 只覆盖标签列表模板，其余模板仍用主题自带的
   icon:
     logo: material/notebook-edit-outline
     repo: fontawesome/brands/github
@@ -84,6 +89,9 @@ theme:
 extra_css:
   - assets/extra.css
 
+extra_javascript:
+  - assets/extra.js
+
 # ---------------------------------------------------------------------------
 # 插件
 # ---------------------------------------------------------------------------
@@ -104,7 +112,7 @@ plugins:
       archive_url_date_format: yyyy
       categories: true
       categories_name: 分类
-      pagination_per_page: 12
+      pagination_per_page: 9
       pagination_url_format: "page/{page}"
       draft: false
       draft_on_serve: true
