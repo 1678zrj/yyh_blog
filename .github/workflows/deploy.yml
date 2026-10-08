@@ -1,0 +1,56 @@
+name: 构建并部署博客
+
+# 每次推送到 main 分支都会重新构建站点并发布到 GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 部署到 GitHub Pages 需要的权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只跑一个部署，排队而不是取消
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建站点
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      # mkdocs 的 hook 会先把 record/ 里的笔记同步成文章再构建
+      - name: 构建站点
+        run: mkdocs build
+
+      - name: 上传站点产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: 发布到 GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署
+        id: deployment
+        uses: actions/deploy-pages@v4

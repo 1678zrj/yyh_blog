@@ -1,0 +1,163 @@
+# ---------------------------------------------------------------------------
+# 个人技术博客站点配置（mkdocs + mkdocs-material）
+#
+# 上线后地址：https://1678zrj.github.io/yyh_blog/
+# 本地预览：  .venv\Scripts\python.exe -m mkdocs serve
+# ---------------------------------------------------------------------------
+
+site_name: yyh 的技术笔记
+site_description: 后端与 AI 应用开发的工程笔记 —— FastAPI / Redis / LangChain / LangGraph / MCP / RAG
+site_author: yyh
+site_url: https://1678zrj.github.io/yyh_blog/
+copyright: Copyright &copy; 2026 yyh
+
+repo_url: https://github.com/1678zrj/yyh_blog
+repo_name: 1678zrj/yyh_blog
+
+docs_dir: docs
+site_dir: site
+
+# 在 mkdocs 读取 docs/ 之前，先把 record/ 里的笔记同步成文章
+hooks:
+  - scripts/gen_blog.py
+
+# ---------------------------------------------------------------------------
+# 笔记同步参数（scripts/gen_blog.py 读取）
+# ---------------------------------------------------------------------------
+extra:
+  note_sync:
+    notes_dir: record            # 原始笔记目录
+    dates_file: note-dates.json  # 文件 -> 日期 的清单（会提交到 git，保证日期不漂移）
+    exclude: []                  # 想隐藏某个目录时写在这里，例如 ["record/私密/*"]
+    dedupe: true                 # 内容完全相同的笔记只发一篇
+    guess_code_language: true    # 没写语言的代码块自动识别语言
+    heading_base_level: 2        # 正文最高级标题统一成 ##
+    home_latest: 6               # 首页展示的最新笔记条数
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/1678zrj
+      name: GitHub
+    - icon: fontawesome/solid/envelope
+      link: mailto:2826981905@qq.com
+      name: 邮箱
+
+# ---------------------------------------------------------------------------
+# 主题
+# ---------------------------------------------------------------------------
+theme:
+  name: material
+  language: zh
+  font: false                     # 不加载 Google Fonts（国内访问不到，会导致页面卡住）
+  icon:
+    logo: material/notebook-edit-outline
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: 切换到暗色模式
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到亮色模式
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.select
+    - content.tooltips
+
+extra_css:
+  - assets/extra.css
+
+# ---------------------------------------------------------------------------
+# 插件
+# ---------------------------------------------------------------------------
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+  - blog:
+      blog_dir: blog
+      post_dir: "{blog}/posts"
+      post_url_format: "{slug}"          # 链接形如 /blog/分类/标题/
+      post_date_format: yyyy 年 M 月 d 日
+      post_readtime: true
+      archive: true
+      archive_name: 归档
+      archive_date_format: yyyy 年
+      archive_url_date_format: yyyy
+      categories: true
+      categories_name: 分类
+      pagination_per_page: 12
+      pagination_url_format: "page/{page}"
+      draft: false
+      draft_on_serve: true
+  - tags:
+      listings_layout: default
+
+# ---------------------------------------------------------------------------
+# Markdown 扩展
+# ---------------------------------------------------------------------------
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.keys
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+# ---------------------------------------------------------------------------
+# 导航（归档 / 分类 由 blog 插件自动挂到「全部笔记」下面）
+# ---------------------------------------------------------------------------
+nav:
+  - 首页: index.md
+  - 全部笔记: blog/index.md
+  - 标签: tags.md
+  - 关于: about.md
+
+# 文章不在 nav 里是正常的，关掉这类提示，避免构建日志被刷屏
+validation:
+  nav:
+    omitted_files: ignore
+  links:
+    absolute_links: ignore
+    unrecognized_links: ignore

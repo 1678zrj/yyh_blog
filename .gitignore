@@ -1,0 +1,12 @@
+# 构建产物
+site/
+.build-cache/
+
+# Python 虚拟环境与缓存
+.venv/
+__pycache__/
+*.pyc
+
+# 由 scripts/gen_blog.py 自动生成（源文件在 record/，日期清单在 note-dates.json）
+docs/index.md
+docs/blog/
