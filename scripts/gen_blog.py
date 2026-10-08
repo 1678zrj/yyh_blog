@@ -23,7 +23,7 @@ import re
 import shutil
 import sys
 from datetime import date, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 # --------------------------------------------------------------------------- #
 # 默认配置（可在 mkdocs.yml 的 extra.note_sync 里覆盖）
@@ -298,21 +298,20 @@ def localize_images(blocks, source: Path, docs_dir: Path, post_rel_dir: str, set
                 return match.group(0)
 
             raw = url.replace("\\", "/")
-            candidate = Path(raw)
-            if not candidate.is_absolute():
-                candidate = (source.parent / raw).resolve()
-            else:
-                candidate = candidate.resolve()
-
-            if candidate == docs_dir or docs_dir in candidate.parents:
-                return match.group(0)          # 已经在 docs/ 里，mkdocs 自己会处理
-
-            # 目标文件名由原始路径决定，因此即使原图不在本机（例如在 CI 上构建），
-            # 只要之前已经复制并提交过，就仍然能改写成功
-            digest = hashlib.md5(str(candidate).encode("utf-8")).hexdigest()[:8]
-            dest = target_dir / f"{digest}-{candidate.name}"
+            # 文件名只由「原始引用字符串」决定，不掺入本机路径，
+            # 这样在 Windows 本地和 Linux CI 上算出的名字完全一致
+            digest = hashlib.md5(raw.casefold().encode("utf-8")).hexdigest()[:8]
+            dest = target_dir / f"{digest}-{PurePosixPath(raw).name}"
 
             if not dest.exists():
+                candidate = Path(raw)
+                if not candidate.is_absolute():
+                    candidate = (source.parent / raw).resolve()
+                else:
+                    candidate = candidate.resolve()
+
+                if candidate == docs_dir or docs_dir in candidate.parents:
+                    return match.group(0)      # 已经在 docs/ 里，mkdocs 自己会处理
                 if not candidate.is_file():
                     missing.append(f"{source.as_posix()} -> {url}")
                     return match.group(0)
@@ -386,7 +385,8 @@ def collect_notes(notes_dir: Path, root: Path, docs_dir: Path, settings: dict, c
     missing_images: list[str] = []
     fresh_dates: dict[str, str] = {}
 
-    for path in sorted(notes_dir.rglob("*.md")):
+    # 排序键同时忽略大小写并保留原串，保证在不同操作系统上结果一致
+    for path in sorted(notes_dir.rglob("*.md"), key=lambda item: (item.as_posix().casefold(), item.as_posix())):
         rel = path.relative_to(root).as_posix()
         if any(fnmatch.fnmatch(rel, pattern) for pattern in settings["exclude"]):
             skipped_exclude.append(rel)
@@ -475,7 +475,7 @@ def write_posts(docs_dir: Path, notes: list[dict], settings: dict) -> dict[str, 
     urls: dict[str, str] = {}
     used: set[str] = set()
 
-    for note in sorted(notes, key=lambda item: item["rel"]):
+    for note in sorted(notes, key=lambda item: (item["rel"].casefold(), item["rel"])):
         folder = note["category_slug"]
         name = note["slug"]
         key = f"{folder}/{name}"
