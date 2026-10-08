@@ -241,6 +241,17 @@ def fingerprint_language(code: str) -> str | None:
     return None
 
 
+ART_CHARS = "│─┌┐└┘├┤┬┴┼━┃╭╮╯╰→←↑↓⇒⇐↔"
+
+
+def looks_like_art(code: str) -> bool:
+    """判断代码块其实是 ASCII 流程图 / 纯文本示意，这种块不要瞎标语言。"""
+    if any(char in code for char in ART_CHARS):
+        return True
+    alnum = sum(char.isalnum() for char in code)
+    return alnum / max(len(code), 1) < 0.45
+
+
 def guess_language(code: str, cache: dict) -> str | None:
     """识别代码块语言，结果按内容哈希缓存，避免每次构建都重算。"""
     digest = hashlib.md5(code.encode("utf-8")).hexdigest()
@@ -248,7 +259,7 @@ def guess_language(code: str, cache: dict) -> str | None:
         return cache[digest] or None
 
     lang = fingerprint_language(code)
-    if lang is None:
+    if lang is None and not looks_like_art(code):
         try:
             from pygments.lexers import guess_lexer
 
