@@ -47,6 +47,9 @@ DEFAULTS: dict = {
     "excerpt_paragraphs": 2,        # 列表页最多展示正文的前几个段落
     "chars_per_minute": 400,        # 估算阅读速度（字符/分钟）
     "home_latest": 6,               # 首页展示的最新文章数量
+    "home_title": "技术笔记",        # 首页大标题（可在 mkdocs.yml 的 extra.homepage 里改）
+    "home_subtitle": "写后端和 AI 应用时遇到的问题，以及我自己找到的答案。"
+    "大多来自真实项目，也有一些只是想把原理搞清楚。",
     "categories_name": "分类",
 }
 
@@ -698,28 +701,28 @@ def write_home(docs_dir: Path, notes: list[dict], urls: dict[str, str], settings
         "",
         '<div class="home-hero" markdown>',
         "",
-        '<p class="home-hero__eyebrow">BACKEND / AI ENGINEERING NOTES</p>',
+        f"# {settings['home_title']}",
         "",
-        "# 技术笔记",
-        "",
-        "后端与 AI 应用开发的工程笔记：把踩过的坑、读过的源码、做过的取舍，"
-        "整理成可以直接复用的问答。",
+        settings["home_subtitle"],
         "",
         '<div class="home-stats">',
         f'  <div class="home-stat"><strong>{len(notes)}</strong><span>篇笔记</span></div>',
         f'  <div class="home-stat"><strong>{len(categories)}</strong><span>个分类</span></div>',
         f'  <div class="home-stat"><strong>{len(years)}</strong><span>个年度</span></div>',
-        f'  <div class="home-stat"><strong>{min(dates)[:4]}</strong><span>年起持续更新</span></div>',
+        f'  <div class="home-stat"><strong>{min(dates)[:4]}</strong><span>年开始记录</span></div>',
         "</div>",
         "",
-        '<div class="home-actions">',
-        '[浏览全部笔记 :material-arrow-right:](blog/index.md){ .md-button .md-button--primary }',
+        # 这层 div 必须带 markdown 属性，否则里面的按钮会当成纯文本原样输出
+        '<div class="home-actions" markdown>',
+        "",
+        "[全部笔记 :material-arrow-right:](blog/index.md){ .md-button .md-button--primary }",
         "[关于我](about.md){ .md-button }",
-        "</div>",
         "",
         "</div>",
         "",
-        "## 最新笔记",
+        "</div>",
+        "",
+        "## 最近更新",
         "",
         '<div class="post-grid">',
     ]
@@ -738,14 +741,14 @@ def write_home(docs_dir: Path, notes: list[dict], urls: dict[str, str], settings
             "</a>",
             "",
         ]
-    parts += ["</div>", "", "## 按分类浏览", "", '<div class="chip-grid">']
+    parts += ["</div>", "", "## 分类", "", '<div class="chip-grid">']
     for name, count in categories:
         # 这里用裸 HTML，mkdocs 不会重写 .md 链接，所以直接写成最终的目录地址
         parts.append(
             f'<a class="chip chip--category" href="blog/category/{material_slugify(name)}/">'
             f'{name}<span class="chip__count">{count}</span></a>'
         )
-    parts += ["</div>", "", "## 按时间浏览", "", '<div class="chip-grid">']
+    parts += ["</div>", "", "## 归档", "", '<div class="chip-grid">']
     for year in sorted(years, reverse=True):
         parts.append(
             f'<a class="chip chip--category" href="blog/archive/{year}/">'
@@ -770,9 +773,9 @@ def write_home(docs_dir: Path, notes: list[dict], urls: dict[str, str], settings
         "\n"
         "# 全部笔记\n"
         "\n"
-        f"共 {len(notes)} 篇，按时间倒序排列。也可以按 "
-        f"[归档](archive/{latest_year}.md) 或 [分类](category/{sample_category}.md) 浏览，"
-        "或直接用左上角的搜索框搜关键词。\n",
+        f"共 {len(notes)} 篇，按时间从新到旧排列。"
+        f"左侧可以按 [分类](category/{sample_category}.md) 或 "
+        f"[年份](archive/{latest_year}.md) 翻，也可以用顶部的搜索框找关键词。\n",
     )
 
 
@@ -877,12 +880,24 @@ def run_sync(root: Path, docs_dir: Path, settings: dict) -> dict:
     return {"posts": len(notes), **skipped}
 
 
+def build_settings(extra: dict) -> dict:
+    """合并 mkdocs.yml 里的 extra.note_sync 与 extra.site_home 配置。"""
+    extra = extra or {}
+    settings = dict(DEFAULTS)
+    settings.update(extra.get("note_sync") or {})
+
+    # 注意不能叫 homepage：mkdocs-material 自己占用了 extra.homepage
+    home = extra.get("site_home") or {}
+    for key in ("title", "subtitle"):
+        if home.get(key):
+            settings[f"home_{key}"] = home[key]
+    return settings
+
+
 def resolve_settings(config) -> tuple[dict, Path, Path]:
     root = Path(config["config_file_path"]).resolve().parent
     docs_dir = Path(config["docs_dir"]).resolve()
-    settings = dict(DEFAULTS)
-    settings.update((config.get("extra") or {}).get("note_sync") or {})
-    return settings, root, docs_dir
+    return build_settings(config.get("extra")), root, docs_dir
 
 
 def on_config(config, **kwargs):
@@ -939,11 +954,10 @@ def main() -> int:
     config_file = root / "mkdocs.yml"
     if config_file.exists():
         data = load_mkdocs_config(config_file)
-        settings = dict(DEFAULTS)
-        settings.update((data.get("extra") or {}).get("note_sync") or {})
+        settings = build_settings(data.get("extra"))
         docs_dir = root / str(data.get("docs_dir", "docs"))
     else:
-        settings = dict(DEFAULTS)
+        settings = build_settings({})
         docs_dir = root / "docs"
 
     if "--optimize-images" in sys.argv:

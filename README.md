@@ -78,7 +78,8 @@ git push
 | 「关于我」页面 | `docs/about.md` |
 | 配色、深浅色 | `mkdocs.yml` 的 `theme.palette` |
 | **排版与视觉动效** | `docs/assets/extra.css`（样式）、`docs/assets/extra.js`（滚动淡入、阅读进度条） |
-| 首页文案（英雄区那段话） | `scripts/gen_blog.py` 里的 `write_home()` |
+| 首页标题与简介 | `mkdocs.yml` 的 `extra.site_home`（改完重新构建即可） |
+| 首页结构（统计、卡片、分类胶囊） | `scripts/gen_blog.py` 里的 `write_home()` |
 | 标签页每条记录的展示内容 | `overrides/fragments/tags/default/listing.html` |
 | 再加一个笔记目录 | `mkdocs.yml` 的 `extra.note_sync.notes_dirs` 里加一行 |
 | 隐藏某些目录不发布 | `mkdocs.yml` 的 `extra.note_sync.exclude`，例如 `["record/私密/*"]` |

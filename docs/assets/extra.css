@@ -131,14 +131,6 @@
   pointer-events: none;
 }
 
-.md-typeset .home-hero__eyebrow {
-  margin: 0 0 0.4rem;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  color: var(--blog-muted);
-}
-
 .md-typeset .home-hero h1 {
   margin: 0 0 0.6rem;
   font-size: 2.1rem;
@@ -188,6 +180,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+}
+
+/* markdown 属性会把按钮包进一个 <p>，这里让它变成弹性的按钮行 */
+.md-typeset .home-actions > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0;
 }
 
 /* —— 首页卡片网格 —— */
