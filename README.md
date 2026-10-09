@@ -114,17 +114,24 @@ git push
 
 ## 首次部署（已完成的部分跳过）
 
-1. 在 GitHub 上创建仓库 `yyh_blog`（public）。
-2. 本地推送代码：
+1. 在 GitHub 上创建仓库 `yyh_blog`（**必须选 Public**，免费账号的 Pages 不支持私有仓库；
+   不要勾选 "Add a README" 之类的初始化选项，否则推送时会有历史冲突）。
+2. 本地推送代码（分支名和远程地址已经配好）：
 
    ```powershell
-   git remote add origin https://github.com/1678zrj/yyh_blog.git
-   git branch -M main
    git push -u origin main
    ```
 
-3. 打开仓库 **Settings → Pages**，把 **Source** 设为 **GitHub Actions**。
-4. 回到 **Actions** 页签，等 `构建并部署博客` 跑完，访问 <https://1678zrj.github.io/yyh_blog/>。
+   第一次推送会弹出浏览器让你登录 GitHub；如果要求输入密码，要填
+   **Personal Access Token**（账号密码方式早已被 GitHub 废弃）。
+
+3. 打开仓库 **Settings → Pages**，把 **Source** 设为 **GitHub Actions**
+   （不要选 "Deploy from a branch"，那个选项走的是另一套 Jekyll 构建，和本项目无关）。
+4. 回到 **Actions** 页签，等 `构建并部署博客` 跑完（约 2~4 分钟），
+   访问 <https://1678zrj.github.io/yyh_blog/>。
+
+> 以后更新只需要 `git add -A` → `git commit -m "..."` → `git push`，
+> 其余步骤都会自动完成。
 
 > 如果希望网址更短（`https://1678zrj.github.io/`），把仓库名改成 `1678zrj.github.io`，
 > 并同步修改 `mkdocs.yml` 里的 `site_url` 和 `repo_url`。
