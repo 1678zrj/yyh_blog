@@ -16,6 +16,23 @@
   display: none;
 }
 
+/* 有可用密钥时：解锁框根本不出现，只显示一行解锁提示，避免"每次都要输口令"的错觉 */
+html.vault-auto #vault-gate {
+  display: none;
+}
+
+#vault-booting {
+  display: none;
+  padding: 4rem 0;
+  color: var(--vault-muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+html.vault-auto #vault-booting {
+  display: block;
+}
+
 /* ---------- 解锁界面 ---------- */
 
 #vault-gate {

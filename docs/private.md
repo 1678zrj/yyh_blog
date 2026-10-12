@@ -7,6 +7,21 @@ hide:
 ---
 
 <div id="vault">
+<script>
+// 这段必须同步执行、且放在解锁框之前：只要有可用的密钥，就直接不给解锁框出现的机会，
+// 否则每次进页面都会先闪一下登录框，看起来像"又要输口令"。
+(function () {
+  try {
+    if (sessionStorage.getItem("vault.skipAuto")) return;
+    var saved = JSON.parse(localStorage.getItem("vault.remember") || "null");
+    var remembered = saved && saved.k && saved.exp > Date.now();
+    if (remembered || sessionStorage.getItem("vault.key")) {
+      document.documentElement.classList.add("vault-auto");
+    }
+  } catch (e) { /* 隐私模式下读不了，退回手动输入 */ }
+})();
+</script>
+<div id="vault-booting">正在用本机保存的密钥解锁…</div>
 <div id="vault-gate">
 <div class="vault-card">
 <h1>私密笔记</h1>

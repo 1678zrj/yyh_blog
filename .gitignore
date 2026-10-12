@@ -13,3 +13,5 @@ docs/blog/
 
 # 本地资料目录（不进公开仓库）
 interview/
+# mkdocs blog 插件生成的临时分页目录（TEMP 环境变量异常时可能落在仓库根目录）
+/tmp*/

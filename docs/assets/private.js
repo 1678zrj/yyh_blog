@@ -109,6 +109,8 @@ function forgetRememberedKey() {
 /* ---------- 解锁界面 -------------------------------------------------------- */
 
 function renderGate(message) {
+  // 自动解锁失败/被锁定时，必须把「不显示登录框」的类去掉，否则用户看不到输入框
+  document.documentElement.classList.remove("vault-auto");
   const gate = $("#vault-gate");
   gate.hidden = false;
   $("#vault-app").hidden = true;
@@ -140,6 +142,8 @@ async function unlock(passphrase) {
 }
 
 async function enterApp() {
+  document.documentElement.classList.remove("vault-auto");
+  $("#vault-booting").hidden = true;
   $("#vault-gate").hidden = true;
   $("#vault-app").hidden = false;
 
@@ -479,7 +483,9 @@ export async function bootVault() {
   });
   bindKeys();
 
-  if (sessionStorage.getItem(SKIP_AUTO_KEY)) return renderGate("");
+  if (sessionStorage.getItem(SKIP_AUTO_KEY)) {
+    return renderGate("已锁定：本次会话不再自动解锁，输入口令即可重新进入。");
+  }
 
   // 按「本标签页的密钥 → 本机记住的密钥」的顺序尝试自动解锁
   const enter = async (key) => {
@@ -497,6 +503,7 @@ export async function bootVault() {
     }
   }
 
+  const hadRemembered = !!localStorage.getItem(REMEMBER_KEY);
   try {
     const remembered = await loadRememberedKey();
     if (remembered) {
@@ -507,7 +514,9 @@ export async function bootVault() {
     localStorage.removeItem(REMEMBER_KEY);
   }
 
-  renderGate("");
+  renderGate(hadRemembered
+    ? "本机保存的密钥已失效（可能是清过浏览数据），请重新输入口令。"
+    : "请输入口令；勾选「记住 30 天」后，这台设备上就不用再输了。");
 }
 
 bootVault();
