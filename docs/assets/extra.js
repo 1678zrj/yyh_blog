@@ -79,11 +79,24 @@
     progress.style.transform = "scaleX(" + Math.min(Math.max(ratio, 0), 1) + ")";
   }
 
-  /* ---- 3. 页面初始化与无刷新换页 ---- */
+  /* ---- 3. 私密笔记专区的启动兜底 ---- */
+
+  // mkdocs-material 开了 navigation.instant：点导航进入专区时不会重新执行页面里的
+  // module 脚本。这里由全局脚本在检测到 #vault 时把它拉起来（bootVault 自身幂等）。
+  function bootVaultIfNeeded() {
+    var vault = document.getElementById("vault");
+    if (!vault || vault.dataset.booted === "1") return;
+    import("./private.js")
+      .then(function (mod) { mod.bootVault(); })
+      .catch(function () { /* 不是专区页面或加载失败，忽略 */ });
+  }
+
+  /* ---- 4. 页面初始化与无刷新换页 ---- */
 
   function refresh() {
     initReveal();
     updateProgress();
+    bootVaultIfNeeded();
   }
 
   var scheduled = false;

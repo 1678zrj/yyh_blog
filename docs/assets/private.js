@@ -9,9 +9,11 @@
  * ------------------------------------------------------------------------- */
 
 const BASE = new URL("../assets/private/", import.meta.url);
-const SESSION_KEY = "vault.key";
+const SESSION_KEY = "vault.key";          // 当前标签页内有效
+const REMEMBER_KEY = "vault.remember";    // 本机记住（含过期时间）
+const SKIP_AUTO_KEY = "vault.skipAuto";   // 主动锁定后，本次会话不再自动解锁
 const LAST_PAGE_KEY = "vault.last";
-const REMEMBER_KEY = "vault.remember";
+const REMEMBER_DAYS = 30;
 
 const state = {
   key: null,
@@ -75,6 +77,35 @@ async function importKey(encoded) {
   return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, true, ["decrypt"]);
 }
 
+/* ---------- 本机「记住 30 天」 ---------------------------------------------- */
+
+function rememberKey(encoded) {
+  try {
+    localStorage.setItem(REMEMBER_KEY, JSON.stringify({
+      k: encoded,
+      exp: Date.now() + REMEMBER_DAYS * 24 * 3600 * 1000,
+    }));
+  } catch { /* 隐私模式下可能写不进去，忽略即可 */ }
+}
+
+async function loadRememberedKey() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REMEMBER_KEY) || "null");
+    if (!saved || !saved.k || !saved.exp) return null;
+    if (Date.now() > saved.exp) { localStorage.removeItem(REMEMBER_KEY); return null; }
+    return await importKey(saved.k);
+  } catch {
+    localStorage.removeItem(REMEMBER_KEY);
+    return null;
+  }
+}
+
+function forgetRememberedKey() {
+  localStorage.removeItem(REMEMBER_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SKIP_AUTO_KEY);
+}
+
 /* ---------- 解锁界面 -------------------------------------------------------- */
 
 function renderGate(message) {
@@ -101,7 +132,10 @@ async function unlock(passphrase) {
 
   state.key = key;
   state.structure = structure;
-  sessionStorage.setItem(SESSION_KEY, await exportKey(key));
+  const encoded = await exportKey(key);
+  sessionStorage.setItem(SESSION_KEY, encoded);
+  sessionStorage.removeItem(SKIP_AUTO_KEY);
+  if ($("#vault-remember")?.checked) rememberKey(encoded);
   await enterApp();
 }
 
@@ -397,7 +431,24 @@ function bindKeys() {
 
 /* ---------- 启动 ------------------------------------------------------------ */
 
-async function boot() {
+/**
+ * 初始化专区。
+ *
+ * 必须是"可重复调用、且对同一份 DOM 只生效一次"：
+ * mkdocs-material 开了 navigation.instant，点导航进来时不会重新执行页面里的 module 脚本，
+ * 所以由全局的 extra.js 在检测到 #vault 出现时调用本函数（见 docs/assets/extra.js）。
+ * DOM 被换掉后 dataset 标记自然消失，于是下次进入会重新初始化。
+ */
+export async function bootVault() {
+  const vault = document.getElementById("vault");
+  if (!vault || vault.dataset.booted === "1") return;
+  vault.dataset.booted = "1";
+
+  state.key = null;
+  state.structure = [];
+  state.search = null;
+  state.current = null;
+
   $("#vault-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const value = $("#vault-passphrase").value.trim();
@@ -410,7 +461,14 @@ async function boot() {
   });
 
   $("#vault-lock").addEventListener("click", () => {
+    // 临时锁定：清掉本标签页的密钥，并且本次会话不再自动解锁
     sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.setItem(SKIP_AUTO_KEY, "1");
+    location.reload();
+  });
+
+  $("#vault-forget").addEventListener("click", () => {
+    forgetRememberedKey();
     location.reload();
   });
 
@@ -421,17 +479,35 @@ async function boot() {
   });
   bindKeys();
 
-  const saved = sessionStorage.getItem(SESSION_KEY);
-  if (saved) {
+  if (sessionStorage.getItem(SKIP_AUTO_KEY)) return renderGate("");
+
+  // 按「本标签页的密钥 → 本机记住的密钥」的顺序尝试自动解锁
+  const enter = async (key) => {
+    state.key = key;
+    state.structure = JSON.parse(await fetchDecrypt(key, "index.bin"));
+    await enterApp();
+  };
+
+  const sessionKey = sessionStorage.getItem(SESSION_KEY);
+  if (sessionKey) {
     try {
-      state.key = await importKey(saved);
-      state.structure = JSON.parse(await fetchDecrypt(state.key, "index.bin"));
-      return await enterApp();
+      return await enter(await importKey(sessionKey));
     } catch {
       sessionStorage.removeItem(SESSION_KEY);
     }
   }
+
+  try {
+    const remembered = await loadRememberedKey();
+    if (remembered) {
+      $("#vault-status").textContent = "已使用本机保存的密钥解锁…";
+      return await enter(remembered);
+    }
+  } catch {
+    localStorage.removeItem(REMEMBER_KEY);
+  }
+
   renderGate("");
 }
 
-boot();
+bootVault();

@@ -81,6 +81,26 @@
   transition: filter 0.2s ease, transform 0.2s ease;
 }
 
+.vault-remember {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+  color: var(--vault-muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vault-remember input {
+  width: auto;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--md-primary-fg-color);
+}
+
 .vault-card button:hover {
   filter: brightness(1.08);
   transform: translateY(-1px);
