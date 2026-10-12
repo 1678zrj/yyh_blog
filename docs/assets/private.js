@@ -13,7 +13,7 @@ const SESSION_KEY = "vault.key";          // 当前标签页内有效
 const REMEMBER_KEY = "vault.remember";    // 本机记住（含过期时间）
 const SKIP_AUTO_KEY = "vault.skipAuto";   // 主动锁定后，本次会话不再自动解锁
 const LAST_PAGE_KEY = "vault.last";
-const REMEMBER_DAYS = 30;
+const REMEMBER_DAYS = 180;   // 记住半年
 
 const state = {
   key: null,
@@ -77,7 +77,7 @@ async function importKey(encoded) {
   return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, true, ["decrypt"]);
 }
 
-/* ---------- 本机「记住 30 天」 ---------------------------------------------- */
+/* ---------- 本机「记住半年」 ------------------------------------------------ */
 
 function rememberKey(encoded) {
   try {
@@ -516,7 +516,7 @@ export async function bootVault() {
 
   renderGate(hadRemembered
     ? "本机保存的密钥已失效（可能是清过浏览数据），请重新输入口令。"
-    : "请输入口令；勾选「记住 30 天」后，这台设备上就不用再输了。");
+    : "请输入口令；勾选「记住半年」后，这台设备上就不会再提示了。");
 }
 
 bootVault();
