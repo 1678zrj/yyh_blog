@@ -112,6 +112,18 @@ git push
 | 图片本地化 | 本地绝对路径的图片复制进 `docs/assets/images/notes/` 并改写链接 |
 | 生成首页 | 统计数字、最新笔记、分类与年度入口 |
 
+## ⚠️ 这个仓库只能有一个 Pages 工作流
+
+本仓库的发布只由 `.github/workflows/deploy.yml` 负责。
+
+**不要在 Actions 页点 "New workflow" 添加其它工作流**（尤其是 GitHub 模板里的
+「GitHub Pages Jekyll」和「Static HTML」）——后者会把**整个仓库根目录**当网站发布，
+而根目录没有 `index.html`，结果是**整站 404**；它和 `deploy.yml` 共用同一个 Pages
+并发分组，每次推送两个工作流互相覆盖，谁后跑完谁生效，表现为站点时好时坏。
+
+> 曾经踩过：误加了 `static.yml`，导致整站（含首页、专区）全部 404。
+> 判断方法：`ls .github/workflows` 里应该**只有** `deploy.yml`。
+
 ## 首次部署（已完成的部分跳过）
 
 1. 在 GitHub 上创建仓库 `yyh_blog`（**必须选 Public**，免费账号的 Pages 不支持私有仓库；
