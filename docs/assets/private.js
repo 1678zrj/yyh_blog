@@ -17,6 +17,7 @@ const REMEMBER_DAYS = 180;   // 记住半年
 
 const state = {
   key: null,
+  build: "",
   structure: [],
   search: null,
   current: null,
@@ -62,9 +63,22 @@ async function decryptBytes(key, buffer) {
 }
 
 async function fetchDecrypt(key, relative) {
-  const response = await fetch(new URL(relative, BASE));
+  const url = new URL(relative, BASE);
+  // 带上构建号：否则浏览器缓存可能给到"上一次加密"的密文，和新的 salt 对不上，
+  // 表现就是"明明记住过口令，却提示密钥已失效"。
+  if (state.build) url.searchParams.set("b", state.build);
+  const response = await fetch(url);
   if (!response.ok) throw new Error(`加载失败：${relative}（HTTP ${response.status}）`);
   return decryptBytes(key, await response.arrayBuffer());
+}
+
+/** 读取构建配置。config.json 体积很小，强制不走缓存，用它来给其它资源定版本。 */
+async function loadConfig() {
+  const response = await fetch(new URL("config.json", BASE), { cache: "no-store" });
+  if (!response.ok) throw new Error(`读取配置失败（HTTP ${response.status}）`);
+  const config = await response.json();
+  state.build = config.build || "";
+  return config;
 }
 
 async function exportKey(key) {
@@ -121,7 +135,7 @@ function renderGate(message) {
 async function unlock(passphrase) {
   const status = $("#vault-status");
   status.textContent = "正在派生密钥（PBKDF2，60 万次）…";
-  const config = await (await fetch(new URL("config.json", BASE))).json();
+  const config = await loadConfig();
 
   const key = await deriveKey(passphrase, b64ToBytes(config.salt), config.iterations);
   status.textContent = "正在校验口令…";
@@ -490,6 +504,7 @@ export async function bootVault() {
   // 按「本标签页的密钥 → 本机记住的密钥」的顺序尝试自动解锁
   const enter = async (key) => {
     state.key = key;
+    await loadConfig();          // 先拿到本次构建号，再解密，避免缓存错配
     state.structure = JSON.parse(await fetchDecrypt(key, "index.bin"));
     await enterApp();
   };
