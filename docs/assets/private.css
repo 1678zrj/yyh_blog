@@ -1,0 +1,441 @@
+/* ---------------------------------------------------------------------------
+ * 私密笔记专区的样式：只作用于 #vault 内部，不影响站点其它页面
+ * 颜色全部取自 mkdocs-material 的 CSS 变量，因此自动跟随深/浅色主题
+ * ------------------------------------------------------------------------- */
+
+#vault {
+  --vault-radius: 0.6rem;
+  --vault-border: 1px solid var(--md-default-fg-color--lightest);
+  --vault-muted: var(--md-default-fg-color--light);
+  --vault-surface: var(--md-code-bg-color);
+  --vault-gap: 1rem;
+}
+
+/* 专区自己有标题栏，隐藏主题渲染出来的页面大标题（不支持 :has 时只是多一行标题，不影响使用） */
+.md-content__inner:has(#vault) > h1 {
+  display: none;
+}
+
+/* ---------- 解锁界面 ---------- */
+
+#vault-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 62vh;
+}
+
+.vault-card {
+  width: min(26rem, 92vw);
+  padding: 2rem 1.8rem;
+  border: var(--vault-border);
+  border-radius: 1rem;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(63, 81, 181, 0.14), transparent 55%),
+    radial-gradient(120% 140% at 100% 0%, rgba(38, 198, 218, 0.14), transparent 55%),
+    var(--vault-surface);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.vault-card h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.3rem;
+}
+
+.vault-card p {
+  margin: 0 0 1.2rem;
+  color: var(--vault-muted);
+  font-size: 0.76rem;
+  line-height: 1.7;
+}
+
+.vault-card input {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: var(--vault-border);
+  border-radius: var(--vault-radius);
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  font-size: 0.82rem;
+  font-family: var(--md-code-font);
+  letter-spacing: 0.05em;
+}
+
+.vault-card input:focus {
+  outline: 2px solid var(--md-primary-fg-color);
+  outline-offset: 1px;
+}
+
+.vault-card button {
+  width: 100%;
+  margin-top: 0.8rem;
+  padding: 0.7rem;
+  border: 0;
+  border-radius: var(--vault-radius);
+  background: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.vault-card button:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+#vault-status {
+  min-height: 1.2rem;
+  margin-top: 0.7rem;
+  color: var(--vault-muted);
+  font-size: 0.7rem;
+}
+
+.vault-note {
+  margin-top: 1.2rem;
+  padding-top: 1rem;
+  border-top: var(--vault-border);
+  color: var(--vault-muted);
+  font-size: 0.66rem;
+  line-height: 1.7;
+  text-align: left;
+}
+
+/* ---------- 主界面 ---------- */
+
+#vault-app {
+  position: relative;
+}
+
+#vault-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--md-primary-fg-color), var(--md-accent-fg-color));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+
+.vault-toolbar {
+  position: sticky;
+  top: 3rem;
+  z-index: 15;
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.6rem 0;
+  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--md-default-bg-color) 88%, transparent);
+  border-bottom: var(--vault-border);
+}
+
+.vault-search-wrap {
+  position: relative;
+  flex: 1;
+}
+
+#vault-search {
+  width: 100%;
+  padding: 0.5rem 0.8rem;
+  border: var(--vault-border);
+  border-radius: var(--vault-radius);
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  font-size: 0.78rem;
+}
+
+#vault-search:focus {
+  outline: 2px solid var(--md-primary-fg-color);
+  outline-offset: 1px;
+}
+
+.vault-btn {
+  padding: 0.45rem 0.8rem;
+  border: var(--vault-border);
+  border-radius: var(--vault-radius);
+  background: var(--vault-surface);
+  color: var(--vault-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.vault-btn:hover {
+  color: var(--md-primary-fg-color);
+  border-color: var(--md-primary-fg-color);
+}
+
+#search-status {
+  color: var(--vault-muted);
+  font-size: 0.68rem;
+}
+
+#vault-results {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  z-index: 25;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.3rem;
+  border: var(--vault-border);
+  border-radius: var(--vault-radius);
+  background: var(--md-default-bg-color);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
+.vault-result {
+  display: block;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.4rem;
+  color: var(--md-default-fg-color);
+  text-decoration: none;
+}
+
+.vault-result:hover,
+.vault-result.is-active {
+  background: var(--vault-surface);
+}
+
+.vault-result__title {
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.vault-result__meta {
+  color: var(--vault-muted);
+  font-size: 0.66rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-result--empty {
+  color: var(--vault-muted);
+  font-size: 0.72rem;
+}
+
+.vault-body {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: var(--vault-gap);
+  margin-top: 1rem;
+  align-items: start;
+}
+
+/* 侧边栏 */
+#vault-side {
+  position: sticky;
+  top: 6.5rem;
+  max-height: calc(100vh - 8rem);
+  overflow: auto;
+  padding-right: 0.2rem;
+  border-right: var(--vault-border);
+}
+
+.vault-group__title {
+  margin: 0.6rem 0 0.2rem;
+  color: var(--vault-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.vault-group.is-collapsed .vault-group__body {
+  display: none;
+}
+
+.vault-chapter__title {
+  margin: 0.4rem 0 0.15rem;
+  color: var(--md-default-fg-color);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.vault-link {
+  display: block;
+  padding: 0.22rem 0.5rem;
+  border-left: 2px solid transparent;
+  border-radius: 0 0.3rem 0.3rem 0;
+  color: var(--vault-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  text-decoration: none;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.vault-link:hover {
+  color: var(--md-primary-fg-color);
+  background: var(--vault-surface);
+}
+
+.vault-link.is-active {
+  border-left-color: var(--md-primary-fg-color);
+  color: var(--md-primary-fg-color);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--md-primary-fg-color) 8%, transparent);
+}
+
+/* 正文区 */
+.vault-head {
+  margin-bottom: 0.8rem;
+}
+
+#vault-crumb {
+  color: var(--vault-muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+}
+
+#vault-title {
+  margin: 0.1rem 0 0;
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+
+#vault-article {
+  font-size: 0.78rem;
+  line-height: 1.85;
+}
+
+#vault-article h2 {
+  margin-top: 2em;
+  padding-bottom: 0.3em;
+  border-bottom: var(--vault-border);
+  font-size: 1.05rem;
+}
+
+#vault-article h3 {
+  margin-top: 1.6em;
+  font-size: 0.9rem;
+}
+
+#vault-article h4 {
+  font-size: 0.82rem;
+}
+
+#vault-article pre {
+  position: relative;
+  border-radius: 0.4rem;
+}
+
+#vault-article blockquote {
+  border-left: 3px solid var(--md-primary-fg-color);
+  padding-left: 0.8rem;
+  color: var(--vault-muted);
+}
+
+#vault-article table {
+  width: 100%;
+  font-size: 0.72rem;
+}
+
+.vault-copy {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border: var(--vault-border);
+  border-radius: 0.3rem;
+  background: var(--md-default-bg-color);
+  color: var(--vault-muted);
+  font-size: 0.62rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+#vault-article pre:hover .vault-copy {
+  opacity: 1;
+}
+
+.vault-loading,
+.vault-error {
+  color: var(--vault-muted);
+  font-size: 0.78rem;
+}
+
+.vault-error {
+  color: var(--md-error-fg-color, #d33);
+}
+
+/* 目录 + 翻页 */
+#vault-toc-box {
+  margin: 1rem 0 1.5rem;
+  padding: 0.6rem 0.8rem;
+  border: var(--vault-border);
+  border-radius: var(--vault-radius);
+  background: var(--vault-surface);
+}
+
+#vault-toc-box summary {
+  color: var(--vault-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.vault-toc__item {
+  display: block;
+  padding: 0.15rem 0;
+  color: var(--vault-muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  text-decoration: none;
+}
+
+.vault-toc__item--h3 {
+  padding-left: 0.9rem;
+}
+
+.vault-toc__item:hover {
+  color: var(--md-primary-fg-color);
+}
+
+#vault-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 2rem 0 3rem;
+  padding-top: 1rem;
+  border-top: var(--vault-border);
+}
+
+.vault-pager__item {
+  max-width: 46%;
+  color: var(--vault-muted);
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.vault-pager__item:hover {
+  color: var(--md-primary-fg-color);
+}
+
+/* ---------- 窄屏 ---------- */
+
+@media screen and (max-width: 60em) {
+  .vault-body {
+    grid-template-columns: 1fr;
+  }
+
+  #vault-side {
+    position: static;
+    max-height: 18rem;
+    border-right: 0;
+    border-bottom: var(--vault-border);
+  }
+
+  .vault-toolbar {
+    top: 2.4rem;
+  }
+}

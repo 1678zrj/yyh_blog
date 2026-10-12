@@ -171,6 +171,7 @@ nav:
   - 首页: index.md
   - 全部笔记: blog/index.md
   - 标签: tags.md
+  - 私密笔记: private.md
   - 关于: about.md
 
 # 文章不在 nav 里是正常的，关掉这类提示，避免构建日志被刷屏
