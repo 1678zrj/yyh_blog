@@ -192,7 +192,10 @@ function renderSidebar() {
 
   groups.forEach((chapters, groupName) => {
     const group = el("div", "vault-group");
-    const title = el("div", "vault-group__title", groupName);
+    const pages = chapters.reduce((sum, chapter) => sum + chapter.pages.length, 0);
+    const title = el("div", "vault-group__title");
+    title.appendChild(document.createTextNode(groupName));
+    title.appendChild(el("span", "vault-group__count", `${pages} 页`));
     title.addEventListener("click", () => group.classList.toggle("is-collapsed"));
     group.appendChild(title);
 
@@ -204,7 +207,10 @@ function renderSidebar() {
           `${chapter.chapter}（${chapter.pages.length} 页）`));
       }
       chapter.pages.forEach((page) => {
-        const link = el("a", "vault-link", page.title);
+        // 页面标题形如「01-xxx（1/7）正文标题…」，前缀和章节名重复，侧边栏里去掉它
+        const link = el("a", "vault-link");
+        link.appendChild(el("span", "vault-link__text", shortLabel(chapter.chapter, page.title)));
+        link.title = page.title;
         link.href = `#p=${page.id}`;
         link.dataset.pageId = page.id;
         link.addEventListener("click", (event) => {
@@ -220,16 +226,30 @@ function renderSidebar() {
   });
 }
 
+/** 侧边栏条目用的短标题：剥掉与章节名重复的前缀，保留「1/7」这类页码。 */
+function shortLabel(chapterName, title) {
+  const escaped = chapterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = title.match(new RegExp(`^${escaped}\\s*[（(](\\d+/\\d+)[）)]\\s*(.*)$`));
+  if (match) return `${match[1]} · ${match[2] || chapterName}`;
+  if (chapterName && title.startsWith(chapterName)) {
+    const rest = title.slice(chapterName.length).replace(/^[·—\-：:\s]+/, "");
+    return rest || title;
+  }
+  return title;
+}
+
 function markActive(id) {
   document.querySelectorAll(".vault-link").forEach((link) => {
     link.classList.toggle("is-active", link.dataset.pageId === id);
   });
   const active = document.querySelector(".vault-link.is-active");
-  if (active) {
-    const group = active.closest(".vault-group");
-    if (group) group.classList.remove("is-collapsed");
-    active.scrollIntoView({ block: "nearest" });
-  }
+  if (!active) return;
+  const activeGroup = active.closest(".vault-group");
+  // 只展开当前所在的组，其余收起：120 个页面全平铺根本没法扫
+  document.querySelectorAll("#vault-nav .vault-group").forEach((group) => {
+    group.classList.toggle("is-collapsed", group !== activeGroup);
+  });
+  active.scrollIntoView({ block: "nearest" });
 }
 
 /* ---------- 打开页面 -------------------------------------------------------- */
@@ -257,6 +277,8 @@ async function openPage(id, options = {}) {
       openPage(link.getAttribute("href").slice(3));
     });
   });
+  markQuestions(article);
+  markLabels(article);
   addCopyButtons(article);
   buildToc(article);
   renderPrevNext(meta);
@@ -417,6 +439,132 @@ function closeSearch() {
   $("#vault-search").value = "";
 }
 
+/* ---------- 阅读体验：题目标记、自测模式、字号、筛选 ------------------------ */
+
+const QUIZ_KEY = "vault.quiz";
+const FONT_KEY = "vault.font";
+const QUESTION_HEAD = /^Q\d+\s*[.．、:：]/;
+
+// 这些粗体标签会被渲染成色块，扫读时一眼能找到每一节的分界
+const LABELS = new Set([
+  "一句话回答", "一句话结论", "展开", "原理", "项目落地", "常见追问", "来源", "参考",
+  "经典资料怎么讲", "我们的差距", "面试怎么答", "容易答错的边界",
+  "边界条件", "取舍", "延伸", "怎么答",
+]);
+
+/** 把「### Qn. 题面」和它后面的正文分别包成 .vault-question / .vault-answer。
+ *
+ * 为什么要包：自测模式要把答案整块藏起来，只留题目；不先分组就只能按行藏，很难看。
+ * 同时给题目加 #q-序号 锚点，方便直接跳到某道题。
+ */
+function markQuestions(article) {
+  [...article.children].forEach((node) => {
+    if (node.tagName !== "H3") return;
+    const text = node.textContent.trim();
+    if (!QUESTION_HEAD.test(text)) return;
+
+    node.classList.add("vault-question");
+    const number = text.match(/^Q(\d+)/);
+    if (number) node.id = `q-${number[1]}`;
+
+    const following = [];
+    let cursor = node.nextElementSibling;
+    while (cursor && cursor.tagName !== "H3" && cursor.tagName !== "H2") {
+      following.push(cursor);
+      cursor = cursor.nextElementSibling;
+    }
+    if (!following.length) return;
+
+    const body = document.createElement("div");
+    body.className = "vault-answer";
+    node.after(body);
+    following.forEach((item) => body.appendChild(item));
+
+    node.addEventListener("click", () => {
+      if (!document.documentElement.classList.contains("vault-quiz")) return;
+      const open = body.classList.toggle("is-open");
+      node.classList.toggle("is-open", open);
+    });
+  });
+}
+
+function markLabels(article) {
+  article.querySelectorAll("p > strong:first-child, li > strong:first-child").forEach((strong) => {
+    const text = strong.textContent.trim().replace(/[:：]\s*$/, "");
+    if (LABELS.has(text)) strong.classList.add("vault-label");
+  });
+}
+
+function applyQuiz(on) {
+  document.documentElement.classList.toggle("vault-quiz", on);
+  localStorage.setItem(QUIZ_KEY, on ? "1" : "0");
+  const button = $("#vault-quiz");
+  if (!button) return;
+  button.classList.toggle("is-on", on);
+  button.textContent = on ? "自测中" : "自测";
+}
+
+function applyFont(level) {
+  const safe = [1, 2, 3].includes(level) ? level : 2;
+  document.documentElement.classList.remove("vault-fs-1", "vault-fs-2", "vault-fs-3");
+  document.documentElement.classList.add(`vault-fs-${safe}`);
+  localStorage.setItem(FONT_KEY, String(safe));
+  const button = $("#vault-font");
+  if (!button) return;
+  button.textContent = `字号 ${["小", "中", "大"][safe - 1]}`;
+  button.classList.toggle("is-on", safe !== 2);
+}
+
+function cycleFont(step) {
+  const current = Number(localStorage.getItem(FONT_KEY)) || 2;
+  const next = Math.min(3, Math.max(1, current + step));
+  applyFont(next);
+}
+
+function bindReadingUI() {
+  applyQuiz(localStorage.getItem(QUIZ_KEY) === "1");
+  applyFont(Number(localStorage.getItem(FONT_KEY)) || 2);
+
+  $("#vault-quiz")?.addEventListener("click", () => {
+    applyQuiz(!document.documentElement.classList.contains("vault-quiz"));
+  });
+  $("#vault-font")?.addEventListener("click", () => {
+    const current = Number(localStorage.getItem(FONT_KEY)) || 2;
+    applyFont(current >= 3 ? 1 : current + 1);
+  });
+  $("#vault-side-toggle")?.addEventListener("click", () => {
+    document.documentElement.classList.toggle("vault-side-open");
+  });
+
+  // 回到顶部
+  const top = $("#vault-top");
+  if (top) {
+    top.hidden = false;
+    top.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+    window.addEventListener("scroll", () => {
+      top.classList.toggle("is-shown", window.scrollY > 500);
+    }, { passive: true });
+  }
+
+  // 侧边栏筛选：命中就留着，没命中的组整组隐藏
+  $("#vault-filter")?.addEventListener("input", (event) => {
+    const needle = event.target.value.trim().toLowerCase();
+    document.querySelectorAll("#vault-nav .vault-group").forEach((group) => {
+      let visible = 0;
+      group.querySelectorAll(".vault-link").forEach((link) => {
+        const hit = !needle || link.textContent.toLowerCase().includes(needle);
+        link.hidden = !hit;
+        if (hit) visible += 1;
+      });
+      group.querySelectorAll(".vault-chapter").forEach((chapter) => {
+        chapter.hidden = ![...chapter.querySelectorAll(".vault-link")].some((l) => !l.hidden);
+      });
+      group.classList.toggle("is-hidden", visible === 0);
+      if (needle) group.classList.remove("is-collapsed");
+    });
+  });
+}
+
 /* ---------- 阅读进度 & 快捷键 ---------------------------------------------- */
 
 function updateProgress() {
@@ -441,6 +589,12 @@ function bindKeys() {
       document.querySelectorAll("#vault-pager a")[0]?.click();
     } else if (event.key === "]") {
       document.querySelectorAll("#vault-pager a")[1]?.click();
+    } else if (event.key.toLowerCase() === "t") {
+      applyQuiz(!document.documentElement.classList.contains("vault-quiz"));
+    } else if (event.key === "+" || event.key === "=") {
+      cycleFont(1);
+    } else if (event.key === "-" || event.key === "_") {
+      cycleFont(-1);
     } else if (event.key === "Escape") {
       closeSearch();
     }
@@ -496,6 +650,7 @@ export async function bootVault() {
     if (match && match[1] !== state.current) openPage(match[1]);
   });
   bindKeys();
+  bindReadingUI();
 
   if (sessionStorage.getItem(SKIP_AUTO_KEY)) {
     return renderGate("已锁定：本次会话不再自动解锁，输入口令即可重新进入。");

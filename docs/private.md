@@ -47,11 +47,17 @@ hide:
 <div id="vault-results" hidden></div>
 </div>
 <span id="search-status"></span>
+<button id="vault-side-toggle" class="vault-btn" type="button" title="显示 / 隐藏章节目录">目录</button>
+<button id="vault-quiz" class="vault-btn" type="button" title="遮住答案，只看问题自测（快捷键 T）">自测</button>
+<button id="vault-font" class="vault-btn" type="button" title="切换正文字号（快捷键 + / -）">字号</button>
 <button id="vault-forget" class="vault-btn" type="button" title="清除本机保存的密钥，下次需要重新输入口令">忘记本机密钥</button>
 <button id="vault-lock" class="vault-btn" type="button">锁定</button>
 </div>
 <div class="vault-body">
-<aside id="vault-side"><nav id="vault-nav"></nav></aside>
+<aside id="vault-side">
+<input id="vault-filter" type="search" placeholder="筛选章节…" autocomplete="off">
+<nav id="vault-nav"></nav>
+</aside>
 <main>
 <div class="vault-head">
 <div id="vault-crumb"></div>
@@ -62,6 +68,7 @@ hide:
 <div id="vault-pager"></div>
 </main>
 </div>
+<button id="vault-top" type="button" title="回到顶部" hidden>↑</button>
 </div>
 </div>
 

@@ -11,7 +11,9 @@ __pycache__/
 docs/index.md
 docs/blog/
 
-# 本地资料目录（不进公开仓库）
-interview/
+# 本地资料目录（八股内容、爬取原文都不进公开仓库）
+interview/*
+# 但构建工具链要保留版本：换机器时不用重写爬虫、加密与校验脚本
+!interview/tools/
 # mkdocs blog 插件生成的临时分页目录（TEMP 环境变量异常时可能落在仓库根目录）
 /tmp*/
