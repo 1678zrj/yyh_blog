@@ -21,23 +21,34 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-# 两种章节体裁：Q&A（### Qn.）与 经典加强的关键点（### 1.）
+# 三种章节体裁：
+#   qa    —— 普通题库（### Qn.，核心四节含 **展开**）
+#   point —— 经典加强（### 1.，按关键点组织）
+#   real  —— 大厂真题（### Qn.，但用 出现场景/为什么这么做/核实与纠错 这套骨架，没有 **展开**）
 QUESTION = re.compile(r"(?m)^###\s+(Q\d+)\s*[.．、:：]\s*(.*)$")
 POINT = re.compile(r"(?m)^###\s+(\d+)\s*[.．、:：]?\s*(.*)$")
 QA_LABELS = ["一句话回答", "展开", "常见追问", "容易答错的边界"]
 POINT_LABELS = ["经典资料怎么讲", "我们的差距", "面试怎么答", "容易答错的边界"]
-# 深度要求（v2/v3 新增）：缺失只告警不算失败，但要在报告里显出来
+REAL_LABELS = ["一句话回答", "为什么这么做", "核实与纠错", "常见追问", "容易答错的边界"]
+# 深度要求（v2/v3/v4 新增）：缺失只告警不算失败，但要在报告里显出来
 DEPTH_LABELS = {
     "qa": ["底层原理", "从原理推答案", "换个前提会怎样"],
     "point": ["类比", "从原理推答案", "换个前提会怎样"],
+    "real": ["底层原理", "从原理推答案", "网上常见误区"],
 }
 SLANG = ["动态识别", "分层承载", "三层防线", "双写一致", "高内聚低耦合", "多快好省"]
 
 
 def parse(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
-    kind = "qa" if QUESTION.search(text) else "point"
-    pattern = QUESTION if kind == "qa" else POINT
+    # 大厂真题章用「出现场景 + 核实与纠错」这套骨架，和普通题库区分开
+    if "**核实与纠错**" in text or "**出现场景**" in text:
+        kind = "real"
+    elif QUESTION.search(text):
+        kind = "qa"
+    else:
+        kind = "point"
+    pattern = QUESTION if kind in ("qa", "real") else POINT
     matches = list(pattern.finditer(text))
     questions = {}
     for index, match in enumerate(matches):
@@ -70,7 +81,7 @@ def evaluate(original: Path, staged: Path) -> dict:
     """跑完全部检查，返回结构化结果（供 apply_staged.py 复用）。"""
     before, after = parse(original), parse(staged)
     kind = after["kind"]
-    core = QA_LABELS if kind == "qa" else POINT_LABELS
+    core = {"qa": QA_LABELS, "real": REAL_LABELS, "point": POINT_LABELS}[kind]
     problems: list[str] = []
     warnings: list[str] = []
 
@@ -105,7 +116,9 @@ def evaluate(original: Path, staged: Path) -> dict:
         if number in before["questions"]:
             old = len(before["questions"][number]["body"])
             new = len(item["body"])
-            if old > 0 and new < old * 0.6:
+            # 阈值 50%：改写允许"重组压缩"（实测有题压到 50~60% 但关键术语没丢），
+            # 同时仍能拦住真正的截断（曾出现 65KB 掉到 12.9KB = 20% 的事故）
+            if old > 500 and new < old * 0.5:
                 shrunk.append(f"{number}（{old}→{new} 字）")
     if shrunk:
         problems.append("字数明显缩水：" + "、".join(shrunk))
@@ -142,7 +155,7 @@ def main() -> int:
             return 1
 
     result = evaluate(original, staged)
-    print(f"体裁：{'Q&A' if result['kind'] == 'qa' else '经典加强（关键点）'}")
+    print(f"体裁：{ {'qa': 'Q&A', 'real': '大厂真题', 'point': '经典加强（关键点）'}[result['kind']] }")
     print(f"原文件：{result['before_questions']} 项 / {result['before_chars']} 字符")
     print(f"改写稿：{result['after_questions']} 项 / {result['after_chars']} 字符"
           f"（{result['after_chars'] / max(result['before_chars'], 1):.0%}）")
