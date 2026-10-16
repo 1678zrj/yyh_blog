@@ -87,7 +87,15 @@ setInterval(() => {
     const box = document.getElementById("vault-search");
     box.value = "锁";
     box.dispatchEvent(new Event("input", { bubbles: true }));
-    setTimeout(() => {
+    // 轮询等结果，而不是固定等 3 秒：首次打开时检索索引还要解密，
+    // 固定等待会误报"检索命中 0 条"（其实只是还没解完）
+    let waited = 0;
+    const timer = setInterval(() => {
+      waited += 1;
+      const results = document.getElementById("vault-results");
+      const ready = results && results.querySelectorAll(".vault-result").length > 0;
+      if (!ready && waited < 20) return;
+      clearInterval(timer);
       const hits = document.querySelectorAll(".vault-result:not(.vault-result--empty)").length;
       const internal = article.querySelectorAll('a[href^="#p="]').length;
       const toc = document.querySelectorAll("#vault-toc a").length;
@@ -101,7 +109,7 @@ setInterval(() => {
              "|internalLinks=" + internal + "|toc=" + toc + "|copyButtons=" + copies +
              "|codeBlocks=" + code + "|typed=" + typed + "|gateVisible=" + gateVisible +
              "|remembered=" + remembered + "|buildTag=" + tagged);
-    }, 3000);
+    }, 500);
   }
 }, 300);
 `;

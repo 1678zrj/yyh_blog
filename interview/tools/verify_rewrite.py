@@ -56,21 +56,11 @@ def check_lists(text: str) -> int:
     return bad
 
 
-def main() -> int:
-    if len(sys.argv) < 3:
-        print(__doc__)
-        return 1
-    original = Path(sys.argv[1])
-    staged = Path(sys.argv[2])
-    for path in (original, staged):
-        if not path.is_file():
-            print(f"找不到文件：{path}")
-            return 1
-
+def evaluate(original: Path, staged: Path) -> dict:
+    """跑完全部检查，返回结构化结果（供 apply_staged.py 复用）。"""
     before, after = parse(original), parse(staged)
     problems: list[str] = []
 
-    # 1) 题号集合
     missing = sorted(set(before["questions"]) - set(after["questions"]))
     extra = sorted(set(after["questions"]) - set(before["questions"]))
     if missing:
@@ -78,7 +68,6 @@ def main() -> int:
     if extra:
         problems.append(f"多出题号：{', '.join(extra)}")
 
-    # 2) 核心标签
     for number, item in after["questions"].items():
         positions = []
         for label in CORE_LABELS:
@@ -90,7 +79,6 @@ def main() -> int:
         elif positions != sorted(positions):
             problems.append(f"{number} 标签顺序不对")
 
-    # 3) 字数不得显著缩水
     shrunk = []
     for number, item in after["questions"].items():
         if number in before["questions"]:
@@ -101,24 +89,44 @@ def main() -> int:
     if shrunk:
         problems.append("字数明显缩水：" + "、".join(shrunk))
 
-    # 4) 列表空行
     bad_lists = check_lists(after["text"])
     if bad_lists:
         problems.append(f"{bad_lists} 处列表前缺空行（会渲染成一大段）")
 
-    # 5) 口号
-    slogans = [word for word in SLANG if word in after["text"] and word not in before["text"]]
+    slogans = [word for word in SLANG
+               if word in after["text"] and word not in before["text"]]
 
-    total_before = len(before["text"])
-    total_after = len(after["text"])
-    print(f"原文件：{len(before['questions'])} 题 / {total_before} 字符")
-    print(f"改写稿：{len(after['questions'])} 题 / {total_after} 字符"
-          f"（{total_after / max(total_before, 1):.0%}）")
-    if slogans:
-        print(f"⚠ 新增口号词：{'、'.join(slogans)}（应改成机制展开）")
-    if problems:
+    return {
+        "ok": not problems,
+        "problems": problems,
+        "slogans": slogans,
+        "before_questions": len(before["questions"]),
+        "after_questions": len(after["questions"]),
+        "before_chars": len(before["text"]),
+        "after_chars": len(after["text"]),
+    }
+
+
+def main() -> int:
+    if len(sys.argv) < 3:
+        print(__doc__)
+        return 1
+    original = Path(sys.argv[1])
+    staged = Path(sys.argv[2])
+    for path in (original, staged):
+        if not path.is_file():
+            print(f"找不到文件：{path}")
+            return 1
+
+    result = evaluate(original, staged)
+    print(f"原文件：{result['before_questions']} 题 / {result['before_chars']} 字符")
+    print(f"改写稿：{result['after_questions']} 题 / {result['after_chars']} 字符"
+          f"（{result['after_chars'] / max(result['before_chars'], 1):.0%}）")
+    if result["slogans"]:
+        print(f"⚠ 新增口号词：{'、'.join(result['slogans'])}（应改成机制展开）")
+    if not result["ok"]:
         print("\n❌ 未通过：")
-        for item in problems:
+        for item in result["problems"]:
             print("  -", item)
         return 1
     print("\n✅ 通过：题数一致、标签齐全、字数未缩水、列表格式正常")
