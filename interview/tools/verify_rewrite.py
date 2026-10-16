@@ -21,14 +21,24 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+# 两种章节体裁：Q&A（### Qn.）与 经典加强的关键点（### 1.）
 QUESTION = re.compile(r"(?m)^###\s+(Q\d+)\s*[.．、:：]\s*(.*)$")
-CORE_LABELS = ["一句话回答", "展开", "常见追问", "容易答错的边界"]
+POINT = re.compile(r"(?m)^###\s+(\d+)\s*[.．、:：]?\s*(.*)$")
+QA_LABELS = ["一句话回答", "展开", "常见追问", "容易答错的边界"]
+POINT_LABELS = ["经典资料怎么讲", "我们的差距", "面试怎么答", "容易答错的边界"]
+# 深度要求（v2/v3 新增）：缺失只告警不算失败，但要在报告里显出来
+DEPTH_LABELS = {
+    "qa": ["底层原理", "从原理推答案", "换个前提会怎样"],
+    "point": ["类比", "从原理推答案", "换个前提会怎样"],
+}
 SLANG = ["动态识别", "分层承载", "三层防线", "双写一致", "高内聚低耦合", "多快好省"]
 
 
 def parse(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
-    matches = list(QUESTION.finditer(text))
+    kind = "qa" if QUESTION.search(text) else "point"
+    pattern = QUESTION if kind == "qa" else POINT
+    matches = list(pattern.finditer(text))
     questions = {}
     for index, match in enumerate(matches):
         start = match.end()
@@ -37,7 +47,7 @@ def parse(path: Path) -> dict:
             "title": match.group(2).strip(),
             "body": text[start:end],
         }
-    return {"text": text, "questions": questions}
+    return {"text": text, "questions": questions, "kind": kind}
 
 
 def check_lists(text: str) -> int:
@@ -59,7 +69,10 @@ def check_lists(text: str) -> int:
 def evaluate(original: Path, staged: Path) -> dict:
     """跑完全部检查，返回结构化结果（供 apply_staged.py 复用）。"""
     before, after = parse(original), parse(staged)
+    kind = after["kind"]
+    core = QA_LABELS if kind == "qa" else POINT_LABELS
     problems: list[str] = []
+    warnings: list[str] = []
 
     missing = sorted(set(before["questions"]) - set(after["questions"]))
     extra = sorted(set(after["questions"]) - set(before["questions"]))
@@ -70,14 +83,22 @@ def evaluate(original: Path, staged: Path) -> dict:
 
     for number, item in after["questions"].items():
         positions = []
-        for label in CORE_LABELS:
+        for label in core:
             found = re.search(r"\*\*" + label + r"\*\*", item["body"])
             positions.append(found.start() if found else -1)
         if -1 in positions:
-            absent = [CORE_LABELS[i] for i, pos in enumerate(positions) if pos == -1]
+            absent = [core[i] for i, pos in enumerate(positions) if pos == -1]
             problems.append(f"{number} 缺标签：{'、'.join(absent)}")
         elif positions != sorted(positions):
             problems.append(f"{number} 标签顺序不对")
+
+    # 深度标签（v2/v3 要求）：缺失告警
+    for label in DEPTH_LABELS[kind]:
+        absent = [number for number, item in after["questions"].items()
+                  if not re.search(r"\*\*" + label + r"\*\*", item["body"])]
+        if absent:
+            warnings.append(f"{len(absent)} 个条目缺「{label}」：{'、'.join(absent[:6])}"
+                            + ("…" if len(absent) > 6 else ""))
 
     shrunk = []
     for number, item in after["questions"].items():
@@ -99,7 +120,9 @@ def evaluate(original: Path, staged: Path) -> dict:
     return {
         "ok": not problems,
         "problems": problems,
+        "warnings": warnings,
         "slogans": slogans,
+        "kind": kind,
         "before_questions": len(before["questions"]),
         "after_questions": len(after["questions"]),
         "before_chars": len(before["text"]),
@@ -119,17 +142,20 @@ def main() -> int:
             return 1
 
     result = evaluate(original, staged)
-    print(f"原文件：{result['before_questions']} 题 / {result['before_chars']} 字符")
-    print(f"改写稿：{result['after_questions']} 题 / {result['after_chars']} 字符"
+    print(f"体裁：{'Q&A' if result['kind'] == 'qa' else '经典加强（关键点）'}")
+    print(f"原文件：{result['before_questions']} 项 / {result['before_chars']} 字符")
+    print(f"改写稿：{result['after_questions']} 项 / {result['after_chars']} 字符"
           f"（{result['after_chars'] / max(result['before_chars'], 1):.0%}）")
     if result["slogans"]:
         print(f"⚠ 新增口号词：{'、'.join(result['slogans'])}（应改成机制展开）")
+    for item in result["warnings"]:
+        print(f"⚠ {item}")
     if not result["ok"]:
         print("\n❌ 未通过：")
         for item in result["problems"]:
             print("  -", item)
         return 1
-    print("\n✅ 通过：题数一致、标签齐全、字数未缩水、列表格式正常")
+    print("\n✅ 通过：条目数一致、标签齐全、字数未缩水、列表格式正常")
     return 0
 
 

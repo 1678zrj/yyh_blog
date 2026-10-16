@@ -45,6 +45,7 @@ GROUPS = [
     ("速查表", "cheatsheet"),
     # —— 补充：机器整理，用来查漏补缺 ——
     ("补充 · Agent 八股", "agent-baguwen"),
+    ("补充 · 大厂真题", "agent-real"),
     ("补充 · 经典加强", "deep"),
     ("补充 · 市场题校准", "market"),
     ("补充 · 通用八股", "gap"),
