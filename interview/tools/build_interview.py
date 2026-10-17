@@ -129,6 +129,11 @@ def merge_chapter(chapter: str, output: str, sections: list[dict]) -> dict | Non
     ]
     content = "\n".join(header) + "\n\n".join(bodies) + "\n"
 
+    # 富化层：主线章节是每次从 _parts/ 重新合并出来的，直接改生成物会被覆盖。
+    # 所以「原话」永远只来自 _parts/（本函数绝不改它），新增的底层原理/类比放在
+    # interview/enrich/<output>.md 里，这里按题号**只做插入**。
+    content, enriched = apply_enrichment(content, output)
+
     # 列表前补空行：否则 Python-Markdown 会把「**展开**：\n- 要点」并成一个段落，
     # 渲染出来就是一大段带 "- " 的密排文字，读起来很累（构建时修，避免被下次重生成覆盖）
     sys.path.insert(0, str(Path(__file__).parent))
@@ -147,7 +152,87 @@ def merge_chapter(chapter: str, output: str, sections: list[dict]) -> dict | Non
         "parts": len(bodies),
         "missing": missing,
         "sources": len(source_files),
+        "enriched": enriched,
     }
+
+
+def parse_enrichment(output: str) -> dict[str, str]:
+    """读取「富化层」：interview/enrich/<output>.md，按题号返回新增内容块。
+
+    文件格式（每个块以 `## Qn.` 开头，块内容就是原样插入的 markdown）：
+
+        ## Q1. <题面，仅用于人工核对，不参与匹配>
+        **底层原理**：
+        ...
+        **类比**：
+        ...
+    """
+    path = INTERVIEW / "enrich" / f"{output}.md"
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    blocks: dict[str, str] = {}
+    matches = list(re.finditer(r"(?m)^##\s+Q(\d+)\s*[.．、:：].*$", text))
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        body = text[match.end():end].strip()
+        if body:
+            blocks[match.group(1)] = body
+    return blocks
+
+
+def apply_enrichment(content: str, output: str) -> tuple[str, int]:
+    """把富化内容**插入**到对应题目里，返回 (新内容, 插入了多少块)。
+
+    插入位置优先 `**常见追问**` 之前，其次 `**项目落地**` 之前，都没有就放在该题正文末尾。
+    **纯插入**：只在锚点处拼接 `块 + 空行`，不改动任何原有字符（包括原有空白），
+    这样「去掉插入块后与原文逐字节一致」可以被程序证明（见 verify_enrich.py）。
+
+    同时把插入前的原文存到 interview/.enrich-audit/，供审计比对。
+    """
+    blocks = parse_enrichment(output)
+    if not blocks:
+        return content, 0
+
+    matches = list(re.finditer(r"(?m)^###\s+Q(\d+)\s*[.．、:：].*$", content))
+    if not matches:
+        return content, 0
+
+    original = content
+    pieces: list[str] = []
+    cursor = 0
+    inserted = 0
+    for index, match in enumerate(matches):
+        start, end = match.start(), (matches[index + 1].start() if index + 1 < len(matches) else len(content))
+        number = match.group(1)
+        body = content[start:end]
+        block = blocks.get(number)
+        if block:
+            anchor = None
+            for marker in ("**常见追问**", "**项目落地**"):
+                position = body.find(marker)
+                if position != -1:
+                    anchor = position
+                    break
+            if anchor is None:
+                # 放该题末尾：在「尾部空白」之前插入，保留原有尾随换行不动
+                cut = len(body.rstrip())
+                body = body[:cut] + "\n\n" + block + body[cut:]
+            else:
+                body = body[:anchor] + block + "\n\n" + body[anchor:]
+            inserted += 1
+        pieces.append(content[cursor:start])
+        pieces.append(body)
+        cursor = end
+    pieces.append(content[cursor:])
+    content = "".join(pieces)
+
+    if inserted:
+        audit = INTERVIEW / ".enrich-audit"
+        audit.mkdir(parents=True, exist_ok=True)
+        (audit / f"{output.replace('/', '__')}.before.md").write_text(
+            original, encoding="utf-8", newline="\n")
+    return content, inserted
 
 
 def build_index(results: list[dict]) -> None:
