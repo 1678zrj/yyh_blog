@@ -36,7 +36,14 @@ EXTRA_GROUPS = [
     ("市场高频题校准", ["market/"]),
     ("通用八股补全", ["gap/"]),
 ]
-GROUPS = MAIN_GROUPS + EXTRA_GROUPS
+# 另一条备考线：国央企 / 公务员考试（行测 + 申论），和上面的技术面试是两回事，单独成段
+EXAM_GROUPS = [
+    ("备考路线总览", ["exam/00-"]),
+    ("行测（客观题）", ["exam/1-行测/"]),
+    ("申论（主观题）", ["exam/2-申论/"]),
+    ("国央企专项与面试", ["exam/3-国央企/"]),
+]
+GROUPS = MAIN_GROUPS + EXTRA_GROUPS + EXAM_GROUPS
 
 
 def collect_extra_chapters(folder: str, suffix: str = "") -> list[dict]:
@@ -316,6 +323,25 @@ def build_index(results: list[dict]) -> None:
     ]
     lines += render(EXTRA_GROUPS, "###")
 
+    # 第三条线：国央企 / 公务员考试（行测 + 申论），与技术面试互不相干
+    exam_items = [r for r in results
+                  if any(r["output"].startswith(p) for _, prefixes in EXAM_GROUPS for p in prefixes)]
+    if exam_items:
+        exam_chars = sum(r["chars"] for r in exam_items) / 10000
+        exam_questions = sum(len(r["questions"]) for r in exam_items)
+        lines += [
+            "---",
+            "",
+            f"## 三、行测申论 · 国央企与公务员考试（{len(exam_items)} 个专题 · "
+            f"{exam_questions} 题 · {exam_chars:.1f} 万字）",
+            "",
+            "> 这一条线**和技术面试无关**，是另一类考试（行测客观题 + 申论主观题 + 国央企专项）。",
+            "> 行测的公式与逻辑规则都给了推导和反例；申论的评分标准各地不一致，文中标了「常见框架」，",
+            "> 以你报考地当年的考试大纲为准。",
+            "",
+        ]
+        lines += render(EXAM_GROUPS, "###")
+
     lines += [
         "## 怎么用这份材料",
         "",
@@ -377,6 +403,10 @@ def main() -> int:
     # 注意：不再往章节名后面加后缀——索引里已经分了两大部分，再加后缀会变成「经典加强（经典加强）」。
     for stats in (collect_extra_chapters("scoring")
                   + collect_extra_chapters("agent-baguwen")
+                  + collect_extra_chapters("exam")
+                  + collect_extra_chapters("exam/1-行测")
+                  + collect_extra_chapters("exam/2-申论")
+                  + collect_extra_chapters("exam/3-国央企")
                   + collect_extra_chapters("agent-real")
                   + collect_extra_chapters("deep")
                   + collect_extra_chapters("market")
