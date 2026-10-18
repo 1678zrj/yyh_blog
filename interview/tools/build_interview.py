@@ -42,6 +42,7 @@ EXAM_GROUPS = [
     ("行测（客观题）", ["exam/1-行测/"]),
     ("申论（主观题）", ["exam/2-申论/"]),
     ("国央企专项与面试", ["exam/3-国央企/"]),
+    ("计算机专业岗位（笔试）", ["exam/4-计算机专业/"]),
 ]
 GROUPS = MAIN_GROUPS + EXTRA_GROUPS + EXAM_GROUPS
 
@@ -407,6 +408,7 @@ def main() -> int:
                   + collect_extra_chapters("exam/1-行测")
                   + collect_extra_chapters("exam/2-申论")
                   + collect_extra_chapters("exam/3-国央企")
+                  + collect_extra_chapters("exam/4-计算机专业")
                   + collect_extra_chapters("agent-real")
                   + collect_extra_chapters("deep")
                   + collect_extra_chapters("market")
