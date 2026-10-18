@@ -35,7 +35,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 INTERVIEW = ROOT / "interview"
-TARGET_DIRS = ["deep", "agent-baguwen", "agent-real", "market", "gap"]
+TARGET_DIRS = ["scoring", "deep", "agent-baguwen", "agent-real", "market", "gap"]
 
 LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d{1,2}[.)])\s+\S")
 FENCE = re.compile(r"^\s*(```|~~~)")

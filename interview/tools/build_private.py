@@ -44,6 +44,7 @@ GROUPS = [
     ("Python 与后端", "backend"),
     ("速查表", "cheatsheet"),
     # —— 补充：机器整理，用来查漏补缺 ——
+    ("冲刺 · 面试加分答案", "scoring"),
     ("补充 · Agent 八股", "agent-baguwen"),
     ("补充 · 大厂真题", "agent-real"),
     ("补充 · 经典加强", "deep"),

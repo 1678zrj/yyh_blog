@@ -28,6 +28,8 @@ MAIN_GROUPS = [
     ("速查表", ["cheatsheet/"]),
 ]
 EXTRA_GROUPS = [
+    # 「面试加分答案」是冲刺层：面试现场该怎么说 + 什么话加分，放在补充部分最前面
+    ("面试加分答案（开口能说）", ["scoring/"]),
     ("Agent 八股专项（求职向）", ["agent-baguwen/"]),
     ("大厂 Agent 真题（按公司）", ["agent-real/"]),
     ("经典加强", ["deep/"]),
@@ -373,7 +375,8 @@ def main() -> int:
     # 联网收集来的通用八股、市场题校准、经典加强、Agent 专项与大厂真题都不在 _plan.json 里，
     # 单独收集后并入索引。
     # 注意：不再往章节名后面加后缀——索引里已经分了两大部分，再加后缀会变成「经典加强（经典加强）」。
-    for stats in (collect_extra_chapters("agent-baguwen")
+    for stats in (collect_extra_chapters("scoring")
+                  + collect_extra_chapters("agent-baguwen")
                   + collect_extra_chapters("agent-real")
                   + collect_extra_chapters("deep")
                   + collect_extra_chapters("market")
