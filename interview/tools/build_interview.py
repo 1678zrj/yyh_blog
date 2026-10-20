@@ -38,6 +38,8 @@ EXTRA_GROUPS = [
 ]
 # 另一条备考线：国央企 / 公务员考试（行测 + 申论），和上面的技术面试是两回事，单独成段
 EXAM_GROUPS = [
+    # 已收到笔试通知的两家，突击材料放最前面（时间紧，优先看）
+    ("⚡ 中石油 / 中移动 突击", ["exam/5-央国企笔试突击/"]),
     ("备考路线总览", ["exam/00-"]),
     ("行测（客观题）", ["exam/1-行测/"]),
     ("申论（主观题）", ["exam/2-申论/"]),
@@ -409,6 +411,7 @@ def main() -> int:
                   + collect_extra_chapters("exam/2-申论")
                   + collect_extra_chapters("exam/3-国央企")
                   + collect_extra_chapters("exam/4-计算机专业")
+                  + collect_extra_chapters("exam/5-央国企笔试突击")
                   + collect_extra_chapters("agent-real")
                   + collect_extra_chapters("deep")
                   + collect_extra_chapters("market")
